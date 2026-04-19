@@ -24,7 +24,7 @@ Implemented today:
 
 Not implemented yet:
 
-- end-to-end tests around live Telegram and `codex` execution
+- automated live end-to-end tests in `CI`
 
 ## Requirements
 
@@ -181,6 +181,30 @@ GitHub Actions runs:
 - `cargo check`
 - `cargo test`
 - `pwsh -NoProfile -File scripts/audit-public-surface.ps1`
+
+## Live E2E
+
+Live end-to-end smoke runs are opt-in only. They do not run in the default `cargo test` path or in `CI`.
+
+Required environment variables:
+
+- `LIVE_TELEGRAM_BOT_TOKEN`
+- `LIVE_TELEGRAM_CHAT_ID`
+- `LIVE_TELEGRAM_SENDER_ID`
+- `LIVE_WORKSPACE`
+
+Optional environment variables:
+
+- `LIVE_CODEX_BIN`
+- `LIVE_TIMEOUT_SEC`
+
+Run command:
+
+```powershell
+cargo test --features live-e2e --test live_end_to_end -- --ignored --nocapture
+```
+
+Use a dedicated test chat. The test sends instructions to that chat, then waits for you to reply to the bot with the exact one-line prompt shown in Telegram.
 
 The `main` branch is protected and requires:
 
