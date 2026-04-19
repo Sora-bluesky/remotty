@@ -212,3 +212,40 @@ fn setup_planning_preserves_existing_live_files() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn setup_planning_does_not_update_marker_when_sync_fails() -> Result<()> {
+    let temp = TempDir::new()?;
+    let planning_root = temp.path().join("planning-root");
+    let marker_path = temp.path().join("planning-root.txt");
+    let previous_root = temp.path().join("previous-root");
+    fs::create_dir_all(&planning_root)?;
+    fs::write(&marker_path, previous_root.display().to_string())?;
+    write_file(
+        &planning_root.join("roadmap-title-ja.psd1"),
+        "@{\nVersionTitles =\n",
+    )?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(repo_root().join("scripts").join("setup-planning.ps1"))
+        .arg("-PlanningRoot")
+        .arg(&planning_root)
+        .arg("-MarkerPath")
+        .arg(&marker_path)
+        .output()
+        .context("failed to run setup-planning.ps1")?;
+
+    assert!(
+        !output.status.success(),
+        "setup-planning unexpectedly succeeded: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&marker_path)?,
+        previous_root.display().to_string()
+    );
+
+    Ok(())
+}

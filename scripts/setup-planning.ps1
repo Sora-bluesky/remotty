@@ -24,13 +24,6 @@ $resolvedMarkerPath = if ([System.IO.Path]::IsPathRooted($MarkerPath)) { $Marker
 
 New-Item -ItemType Directory -Force -Path $resolvedPlanningRoot | Out-Null
 
-$markerDirectory = Split-Path -Parent $resolvedMarkerPath
-if (-not [string]::IsNullOrWhiteSpace($markerDirectory)) {
-    New-Item -ItemType Directory -Force -Path $markerDirectory | Out-Null
-}
-
-[System.IO.File]::WriteAllText($resolvedMarkerPath, $resolvedPlanningRoot, $utf8NoBom)
-
 $examplePairs = @(
     @{
         Source = Join-Path $repoRoot 'tasks/backlog.example.yaml'
@@ -53,6 +46,13 @@ $syncRoadmapScript = Join-Path $repoRoot 'scripts/sync-roadmap.ps1'
     -BacklogPath (Join-Path $resolvedPlanningRoot 'backlog.yaml') `
     -RoadmapPath (Join-Path $resolvedPlanningRoot 'ROADMAP.md') `
     -RoadmapTitleJaPath (Join-Path $resolvedPlanningRoot 'roadmap-title-ja.psd1')
+
+$markerDirectory = Split-Path -Parent $resolvedMarkerPath
+if (-not [string]::IsNullOrWhiteSpace($markerDirectory)) {
+    New-Item -ItemType Directory -Force -Path $markerDirectory | Out-Null
+}
+
+[System.IO.File]::WriteAllText($resolvedMarkerPath, $resolvedPlanningRoot, $utf8NoBom)
 
 Write-Output ("Planning root: {0}" -f $resolvedPlanningRoot)
 Write-Output ("Marker path: {0}" -f $resolvedMarkerPath)
