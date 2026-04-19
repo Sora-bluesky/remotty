@@ -398,7 +398,15 @@ async fn continue_lane_after_completion(
         unresolved_checks = next_unresolved_checks;
     }
 
-    outcome.last_message = last_visible_message;
+    outcome.last_message = if last_visible_message.trim().is_empty()
+        && matches!(lane.mode, LaneMode::Infinite | LaneMode::MaxTurns)
+        && !outcome.approval_pending
+        && unresolved_checks.is_none()
+    {
+        format_auto_continue_waiting_message(auto_turns_completed)
+    } else {
+        last_visible_message
+    };
     Ok((outcome, unresolved_checks, auto_turns_completed))
 }
 
@@ -413,6 +421,17 @@ fn format_processing_message(is_resume: bool) -> String {
 fn format_runtime_failure_message() -> String {
     "処理中に失敗しました。少し待ってから再送してください。必要ならローカルのログを確認します。"
         .to_owned()
+}
+
+fn format_auto_continue_waiting_message(auto_turns_completed: usize) -> String {
+    if auto_turns_completed == 0 {
+        "この依頼は完了しました。次の入力を待ちます。".to_owned()
+    } else {
+        format!(
+            "自動継続を {} 回実行し、この依頼は完了しました。次の入力を待ちます。",
+            auto_turns_completed
+        )
+    }
 }
 
 fn format_help_message() -> String {
@@ -719,6 +738,15 @@ mod tests {
         let message = format_runtime_failure_message();
         assert!(message.contains("失敗しました"));
         assert!(message.contains("再送"));
+    }
+
+    #[test]
+    fn auto_continue_waiting_message_is_clear() {
+        assert_eq!(
+            format_auto_continue_waiting_message(0),
+            "この依頼は完了しました。次の入力を待ちます。"
+        );
+        assert!(format_auto_continue_waiting_message(2).contains("自動継続を 2 回実行"));
     }
 
     #[test]
