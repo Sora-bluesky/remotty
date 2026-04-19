@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use crate::codex::{CodexRequest, CodexRunner};
 use crate::config::{Config, LaneMode, checks::CheckRunSummary, checks::run_profile};
-use crate::store::{AuthorizedSender, LaneState, NewRun, Store};
+use crate::store::{AuthorizedSender, LaneRecord, LaneState, NewRun, Store};
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
     TelegramControlCommand,
@@ -14,6 +14,8 @@ use crate::windows_secret::load_secret;
 
 const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
 const MAX_TELEGRAM_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+const MAX_INFINITE_AUTO_TURNS: usize = 16;
+const AUTO_CONTINUE_STOP_MARKER: &str = "CHANNEL_WAITING";
 
 pub async fn run_console(config: Config) -> Result<()> {
     let shutdown = CancellationToken::new();
@@ -110,6 +112,7 @@ async fn handle_message(
             update.chat_id,
             &update.thread_key,
             command,
+            config.policy.max_turns_limit,
         )?;
         let sent = telegram.send_message(update.chat_id, &reply).await?;
         if let Some(lane) = store.find_lane(update.chat_id, &update.thread_key)? {
@@ -131,6 +134,7 @@ async fn handle_message(
         &update.thread_key,
         &workspace.id,
         workspace.default_mode,
+        configured_extra_turn_budget(workspace.default_mode, None, config.policy.max_turns_limit),
     )?;
 
     store.insert_message(
@@ -184,17 +188,17 @@ async fn handle_message(
             .await?
     };
     let request = build_user_request(&update.text, &saved_attachments);
-    let outcome = if let Some(session_id) = lane.codex_session_id.as_deref() {
+    let initial_outcome = if let Some(session_id) = lane.codex_session_id.as_deref() {
         codex.resume(workspace, session_id, request).await?
     } else {
         codex.start(workspace, request).await?
     };
-    let (outcome, unresolved_checks) =
-        settle_completion_checks(config, workspace, codex, lane.mode, outcome).await?;
+    let (outcome, unresolved_checks, auto_turns_completed) =
+        continue_lane_after_completion(config, workspace, codex, &lane, initial_outcome).await?;
 
     let reply = if let Some(summary) = unresolved_checks.as_ref() {
         truncate(
-            &format_reply_with_failed_checks(&outcome.last_message, summary),
+            &format_reply_with_failed_checks(&outcome.last_message, summary, auto_turns_completed),
             config.policy.max_output_chars,
         )
     } else if outcome.last_message.trim().is_empty() {
@@ -255,12 +259,14 @@ fn handle_control_command(
     chat_id: i64,
     thread_key: &str,
     command: TelegramControlCommand,
+    default_max_turns_limit: i64,
 ) -> Result<String> {
     match command {
         TelegramControlCommand::Help => Ok(format_help_message()),
-        TelegramControlCommand::Status => {
-            Ok(format_status_message(store.find_lane(chat_id, thread_key)?))
-        }
+        TelegramControlCommand::Status => Ok(format_status_message(
+            store.find_lane(chat_id, thread_key)?,
+            default_max_turns_limit,
+        )),
         TelegramControlCommand::Stop => {
             let Some(lane) = store.find_lane(chat_id, thread_key)? else {
                 return Ok("停止する対象はありません。".to_owned());
@@ -268,13 +274,22 @@ fn handle_control_command(
             store.clear_lane_session(&lane.lane_id)?;
             Ok("現在のセッションを止めました。次の入力は新しい開始として扱います。".to_owned())
         }
-        TelegramControlCommand::Mode(raw_mode) => {
-            let mode = parse_lane_mode_name(&raw_mode)?;
-            let lane = store.get_or_create_lane(chat_id, thread_key, &workspace.id, mode)?;
-            store.update_lane_mode(&lane.lane_id, mode)?;
+        TelegramControlCommand::Mode { mode, max_turns } => {
+            let mode = parse_lane_mode_name(&mode)?;
+            let extra_turn_budget =
+                configured_extra_turn_budget(mode, max_turns, default_max_turns_limit);
+            let lane = store.get_or_create_lane(
+                chat_id,
+                thread_key,
+                &workspace.id,
+                mode,
+                extra_turn_budget,
+            )?;
+            store.update_lane_mode(&lane.lane_id, mode, extra_turn_budget)?;
             Ok(format!(
-                "この会話のモードを `{}` に更新しました。",
-                lane_mode_name(mode)
+                "この会話のモードを {} に更新しました。{}",
+                lane_mode_name(mode),
+                format_lane_mode_details(mode, extra_turn_budget)
             ))
         }
     }
@@ -331,6 +346,57 @@ async fn settle_completion_checks(
     Ok((outcome, None))
 }
 
+async fn continue_lane_after_completion(
+    config: &Config,
+    workspace: &crate::config::WorkspaceConfig,
+    codex: &CodexRunner,
+    lane: &LaneRecord,
+    initial_outcome: crate::codex::CodexOutcome,
+) -> Result<(crate::codex::CodexOutcome, Option<CheckRunSummary>, usize)> {
+    let (mut outcome, mut unresolved_checks) =
+        settle_completion_checks(config, workspace, codex, lane.mode, initial_outcome).await?;
+    let mut auto_turns_completed = 0usize;
+    let mut last_visible_message = sanitize_auto_continue_message(&outcome.last_message);
+    let auto_turn_limit = automatic_turn_limit(
+        lane.mode,
+        lane.extra_turn_budget,
+        config.policy.max_turns_limit,
+    );
+
+    while should_continue_automatically(
+        lane.mode,
+        auto_turn_limit,
+        auto_turns_completed,
+        &outcome,
+        unresolved_checks.as_ref(),
+    ) {
+        let session_id = outcome
+            .session_id
+            .as_deref()
+            .ok_or_else(|| anyhow!("missing session_id for auto-continue"))?;
+        let resumed = codex
+            .resume(
+                workspace,
+                session_id,
+                build_auto_continue_prompt(&workspace.continue_prompt),
+            )
+            .await?;
+        auto_turns_completed += 1;
+
+        let (next_outcome, next_unresolved_checks) =
+            settle_completion_checks(config, workspace, codex, lane.mode, resumed).await?;
+        let visible_message = sanitize_auto_continue_message(&next_outcome.last_message);
+        if !visible_message.trim().is_empty() {
+            last_visible_message = visible_message;
+        }
+        outcome = next_outcome;
+        unresolved_checks = next_unresolved_checks;
+    }
+
+    outcome.last_message = last_visible_message;
+    Ok((outcome, unresolved_checks, auto_turns_completed))
+}
+
 fn format_processing_message(is_resume: bool) -> String {
     if is_resume {
         "前回の続きとして処理しています。完了したら、このメッセージを更新します。".to_owned()
@@ -350,12 +416,18 @@ fn format_help_message() -> String {
         "/help",
         "/status",
         "/stop",
-        "/mode await_reply|completion_checks|infinite|max_turns",
+        "/mode await_reply",
+        "/mode completion_checks",
+        "/mode infinite",
+        "/mode max_turns [count]",
     ]
     .join("\n")
 }
 
-fn format_status_message(lane: Option<crate::store::LaneRecord>) -> String {
+fn format_status_message(
+    lane: Option<crate::store::LaneRecord>,
+    default_max_turns_limit: i64,
+) -> String {
     let Some(lane) = lane else {
         return "この会話にはまだレーンがありません。".to_owned();
     };
@@ -365,10 +437,16 @@ fn format_status_message(lane: Option<crate::store::LaneRecord>) -> String {
     } else {
         "なし"
     };
+    let configured_budget = configured_extra_turn_budget(
+        lane.mode,
+        Some(lane.extra_turn_budget),
+        default_max_turns_limit,
+    );
     format!(
-        "状態: `{}`\nモード: `{}`\nセッション: {}",
+        "状態: `{}`\nモード: `{}`\n{}\nセッション: {}",
         lane_state_name(lane.state),
         lane_mode_name(lane.mode),
+        format_lane_mode_details(lane.mode, configured_budget),
         session
     )
 }
@@ -413,16 +491,104 @@ fn build_completion_retry_prompt(continue_prompt: &str, summary: &CheckRunSummar
     )
 }
 
-fn format_reply_with_failed_checks(last_message: &str, summary: &CheckRunSummary) -> String {
+fn format_reply_with_failed_checks(
+    last_message: &str,
+    summary: &CheckRunSummary,
+    auto_turns_completed: usize,
+) -> String {
     let mut sections = Vec::new();
     if !last_message.trim().is_empty() {
         sections.push(truncate(last_message, usize::MAX));
+    }
+    if auto_turns_completed > 0 {
+        sections.push(format!(
+            "自動継続を {} 回実行したあとで止まりました。",
+            auto_turns_completed
+        ));
     }
     sections.push(format!(
         "確認で失敗しました。ローカルで追加の修正が必要です。\n{}",
         summary.summary()
     ));
     sections.join("\n\n")
+}
+
+fn build_auto_continue_prompt(continue_prompt: &str) -> String {
+    format!(
+        "{continue_prompt}\n\nまだ続ける作業がある時だけ続けてください。区切りがついたら `{AUTO_CONTINUE_STOP_MARKER}` とだけ返してください。"
+    )
+}
+
+fn sanitize_auto_continue_message(message: &str) -> String {
+    if message.trim() == AUTO_CONTINUE_STOP_MARKER {
+        String::new()
+    } else {
+        message.to_owned()
+    }
+}
+
+fn automatic_turn_limit(
+    mode: LaneMode,
+    configured_budget: i64,
+    default_max_turns_limit: i64,
+) -> Option<usize> {
+    match mode {
+        LaneMode::Infinite => None,
+        LaneMode::MaxTurns => Some(configured_extra_turn_budget(
+            mode,
+            Some(configured_budget),
+            default_max_turns_limit,
+        ) as usize),
+        LaneMode::AwaitReply | LaneMode::CompletionChecks => Some(0),
+    }
+}
+
+fn should_continue_automatically(
+    mode: LaneMode,
+    auto_turn_limit: Option<usize>,
+    auto_turns_completed: usize,
+    outcome: &crate::codex::CodexOutcome,
+    unresolved_checks: Option<&CheckRunSummary>,
+) -> bool {
+    if matches!(mode, LaneMode::AwaitReply | LaneMode::CompletionChecks) {
+        return false;
+    }
+    if outcome.approval_pending
+        || unresolved_checks.is_some()
+        || outcome.session_id.is_none()
+        || outcome.last_message.trim().is_empty()
+        || outcome.last_message.trim() == AUTO_CONTINUE_STOP_MARKER
+    {
+        return false;
+    }
+    match mode {
+        LaneMode::Infinite => auto_turns_completed < MAX_INFINITE_AUTO_TURNS,
+        LaneMode::MaxTurns => auto_turn_limit
+            .map(|limit| auto_turns_completed < limit)
+            .unwrap_or(false),
+        LaneMode::AwaitReply | LaneMode::CompletionChecks => false,
+    }
+}
+
+fn configured_extra_turn_budget(
+    mode: LaneMode,
+    requested_budget: Option<i64>,
+    default_max_turns_limit: i64,
+) -> i64 {
+    match mode {
+        LaneMode::MaxTurns => requested_budget
+            .filter(|value| *value > 0)
+            .unwrap_or(default_max_turns_limit),
+        LaneMode::AwaitReply | LaneMode::CompletionChecks | LaneMode::Infinite => 0,
+    }
+}
+
+fn format_lane_mode_details(mode: LaneMode, extra_turn_budget: i64) -> String {
+    match mode {
+        LaneMode::MaxTurns => format!("追加ターン上限: {}", extra_turn_budget),
+        LaneMode::Infinite => format!("自動継続: 安全上限 {} 回/入力", MAX_INFINITE_AUTO_TURNS),
+        LaneMode::AwaitReply | LaneMode::CompletionChecks => "追加ターン上限: なし".to_owned(),
+    }
 }
 
 fn parse_lane_mode_name(value: &str) -> Result<LaneMode> {
@@ -517,8 +683,9 @@ mod tests {
 
     #[test]
     fn failed_check_reply_includes_agent_message_and_summary() {
-        let reply = format_reply_with_failed_checks("修正を試しました。", &failed_summary());
+        let reply = format_reply_with_failed_checks("修正を試しました。", &failed_summary(), 2);
         assert!(reply.contains("修正を試しました。"));
+        assert!(reply.contains("自動継続を 2 回実行"));
         assert!(reply.contains("確認で失敗しました。"));
         assert!(reply.contains("completion checks failed on 'cargo test'"));
     }
@@ -558,7 +725,7 @@ mod tests {
     #[test]
     fn format_status_message_without_lane_is_clear() {
         assert_eq!(
-            format_status_message(None),
+            format_status_message(None, 3),
             "この会話にはまだレーンがありません。"
         );
     }
@@ -588,7 +755,11 @@ mod tests {
             &workspace,
             10,
             "dm",
-            TelegramControlCommand::Mode("completion_checks".to_owned()),
+            TelegramControlCommand::Mode {
+                mode: "completion_checks".to_owned(),
+                max_turns: None,
+            },
+            3,
         )
         .expect("mode command should succeed");
 
@@ -601,20 +772,54 @@ mod tests {
     }
 
     #[test]
+    fn mode_command_updates_max_turns_budget() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let workspace = test_workspace();
+
+        let reply = handle_control_command(
+            &store,
+            &workspace,
+            10,
+            "dm",
+            TelegramControlCommand::Mode {
+                mode: "max_turns".to_owned(),
+                max_turns: Some(5),
+            },
+            3,
+        )
+        .expect("mode command should succeed");
+
+        let lane = store
+            .find_lane(10, "dm")
+            .expect("lane lookup should succeed")
+            .expect("lane should exist");
+        assert_eq!(lane.mode, LaneMode::MaxTurns);
+        assert_eq!(lane.extra_turn_budget, 5);
+        assert!(reply.contains("追加ターン上限: 5"));
+    }
+
+    #[test]
     fn stop_command_clears_session() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let workspace = test_workspace();
         let lane = store
-            .get_or_create_lane(20, "dm", &workspace.id, LaneMode::AwaitReply)
+            .get_or_create_lane(20, "dm", &workspace.id, LaneMode::AwaitReply, 0)
             .expect("lane should be created");
         store
             .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
             .expect("lane should update");
 
-        let reply =
-            handle_control_command(&store, &workspace, 20, "dm", TelegramControlCommand::Stop)
-                .expect("stop command should succeed");
+        let reply = handle_control_command(
+            &store,
+            &workspace,
+            20,
+            "dm",
+            TelegramControlCommand::Stop,
+            3,
+        )
+        .expect("stop command should succeed");
 
         let lane = store
             .find_lane(20, "dm")
@@ -662,5 +867,47 @@ mod tests {
             continue_prompt: "continue".to_owned(),
             checks_profile: "default".to_owned(),
         }
+    }
+
+    #[test]
+    fn automatic_turn_limit_uses_default_for_zero_budget() {
+        assert_eq!(automatic_turn_limit(LaneMode::MaxTurns, 0, 4), Some(4));
+    }
+
+    #[test]
+    fn sanitize_auto_continue_message_hides_stop_marker() {
+        assert_eq!(
+            sanitize_auto_continue_message(AUTO_CONTINUE_STOP_MARKER),
+            ""
+        );
+        assert_eq!(
+            sanitize_auto_continue_message("修正しました。"),
+            "修正しました。"
+        );
+    }
+
+    #[test]
+    fn should_continue_automatically_for_max_turns_until_limit() {
+        let outcome = crate::codex::CodexOutcome {
+            session_id: Some("session-1".to_owned()),
+            last_message: "続けます".to_owned(),
+            exit_code: Some(0),
+            approval_pending: false,
+        };
+
+        assert!(should_continue_automatically(
+            LaneMode::MaxTurns,
+            Some(2),
+            1,
+            &outcome,
+            None,
+        ));
+        assert!(!should_continue_automatically(
+            LaneMode::MaxTurns,
+            Some(2),
+            2,
+            &outcome,
+            None,
+        ));
     }
 }

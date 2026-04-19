@@ -2,7 +2,9 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Result;
-use codex_telegram_bridge::config::{CheckCommand, CheckProfile, Config, checks::run_profile};
+use codex_telegram_bridge::config::{
+    CheckCommand, CheckProfile, Config, DEFAULT_MAX_TURNS_BUDGET, checks::run_profile,
+};
 use tempfile::tempdir;
 
 #[test]
@@ -39,6 +41,7 @@ log_dir = "state/logs"
 default_mode = "completion_checks"
 progress_edit_interval_ms = 5000
 max_output_chars = 12000
+max_turns_limit = 4
 
 [checks.profiles.quick]
 [[checks.profiles.quick.commands]]
@@ -75,6 +78,112 @@ checks_profile = "quick"
     assert_eq!(profile.commands[0].program, "cargo");
     assert_eq!(profile.commands[0].args, vec!["fmt", "--check"]);
     assert_eq!(profile.commands[1].timeout_sec, 90);
+    assert_eq!(config.policy.max_turns_limit, 4);
+    Ok(())
+}
+
+#[test]
+fn config_uses_default_max_turns_limit_when_omitted() -> Result<()> {
+    let dir = tempdir()?;
+    let config_path = dir.path().join("bridge.toml");
+    fs::write(
+        &config_path,
+        r#"
+[service]
+run_mode = "console"
+poll_timeout_sec = 30
+shutdown_grace_sec = 15
+
+[telegram]
+token_secret_ref = "secret"
+allowed_chat_types = ["private"]
+admin_sender_ids = [1]
+
+[codex]
+binary = "codex"
+model = "gpt-5.4"
+sandbox = "workspace-write"
+approval = "on-request"
+profile = "default"
+
+[storage]
+db_path = "state/bridge.db"
+state_dir = "state"
+temp_dir = "state/tmp"
+log_dir = "state/logs"
+
+[policy]
+default_mode = "await_reply"
+progress_edit_interval_ms = 5000
+max_output_chars = 12000
+
+[[workspaces]]
+id = "main"
+path = "C:/workspace"
+writable_roots = ["C:/workspace"]
+default_mode = "await_reply"
+continue_prompt = "continue"
+checks_profile = "default"
+"#,
+    )?;
+
+    let config = Config::load(&config_path)?;
+    assert_eq!(config.policy.max_turns_limit, DEFAULT_MAX_TURNS_BUDGET);
+    Ok(())
+}
+
+#[test]
+fn config_rejects_non_positive_max_turns_limit() -> Result<()> {
+    let dir = tempdir()?;
+    let config_path = dir.path().join("bridge.toml");
+    fs::write(
+        &config_path,
+        r#"
+[service]
+run_mode = "console"
+poll_timeout_sec = 30
+shutdown_grace_sec = 15
+
+[telegram]
+token_secret_ref = "secret"
+allowed_chat_types = ["private"]
+admin_sender_ids = [1]
+
+[codex]
+binary = "codex"
+model = "gpt-5.4"
+sandbox = "workspace-write"
+approval = "on-request"
+profile = "default"
+
+[storage]
+db_path = "state/bridge.db"
+state_dir = "state"
+temp_dir = "state/tmp"
+log_dir = "state/logs"
+
+[policy]
+default_mode = "await_reply"
+progress_edit_interval_ms = 5000
+max_output_chars = 12000
+max_turns_limit = 0
+
+[[workspaces]]
+id = "main"
+path = "C:/workspace"
+writable_roots = ["C:/workspace"]
+default_mode = "await_reply"
+continue_prompt = "continue"
+checks_profile = "default"
+"#,
+    )?;
+
+    let error = Config::load(&config_path).expect_err("config should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("policy.max_turns_limit must be greater than zero")
+    );
     Ok(())
 }
 

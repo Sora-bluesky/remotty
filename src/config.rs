@@ -63,6 +63,8 @@ pub struct PolicyConfig {
     pub default_mode: LaneMode,
     pub progress_edit_interval_ms: u64,
     pub max_output_chars: usize,
+    #[serde(default = "default_max_turns_limit")]
+    pub max_turns_limit: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,8 +116,14 @@ pub enum LaneMode {
     MaxTurns,
 }
 
+pub const DEFAULT_MAX_TURNS_BUDGET: i64 = 3;
+
 fn default_check_timeout_sec() -> u64 {
     300
+}
+
+fn default_max_turns_limit() -> i64 {
+    DEFAULT_MAX_TURNS_BUDGET
 }
 
 impl Config {
@@ -167,6 +175,9 @@ impl Config {
                     );
                 }
             }
+        }
+        if self.policy.max_turns_limit <= 0 {
+            bail!("policy.max_turns_limit must be greater than zero");
         }
         Ok(())
     }

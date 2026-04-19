@@ -31,7 +31,10 @@ pub enum TelegramControlCommand {
     Help,
     Status,
     Stop,
-    Mode(String),
+    Mode {
+        mode: String,
+        max_turns: Option<i64>,
+    },
 }
 
 impl IncomingMessage {
@@ -506,11 +509,24 @@ pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
             .then_some(TelegramControlCommand::Stop);
     }
     if command.eq_ignore_ascii_case("mode") {
-        let value = parts.next()?.trim();
-        if value.is_empty() || parts.next().is_some() {
+        let mode = parts.next()?.trim().to_ascii_lowercase();
+        if mode.is_empty() {
             return None;
         }
-        return Some(TelegramControlCommand::Mode(value.to_ascii_lowercase()));
+        let max_turns = match parts.next() {
+            Some(raw_budget) => {
+                if !mode.eq_ignore_ascii_case("max_turns") || parts.next().is_some() {
+                    return None;
+                }
+                let parsed = raw_budget.parse::<i64>().ok()?;
+                if parsed <= 0 {
+                    return None;
+                }
+                Some(parsed)
+            }
+            None => None,
+        };
+        return Some(TelegramControlCommand::Mode { mode, max_turns });
     }
 
     None
@@ -980,7 +996,21 @@ mod tests {
     fn parses_mode_command_argument() {
         assert_eq!(
             parse_control_command("/mode completion_checks"),
-            Some(TelegramControlCommand::Mode("completion_checks".to_owned()))
+            Some(TelegramControlCommand::Mode {
+                mode: "completion_checks".to_owned(),
+                max_turns: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_mode_command_with_max_turns_budget() {
+        assert_eq!(
+            parse_control_command("/mode max_turns 5"),
+            Some(TelegramControlCommand::Mode {
+                mode: "max_turns".to_owned(),
+                max_turns: Some(5),
+            })
         );
     }
 
@@ -1027,5 +1057,7 @@ mod tests {
     #[test]
     fn rejects_mode_command_with_extra_arguments() {
         assert_eq!(parse_control_command("/mode completion checks"), None);
+        assert_eq!(parse_control_command("/mode max_turns 3 extra"), None);
+        assert_eq!(parse_control_command("/mode max_turns 0"), None);
     }
 }

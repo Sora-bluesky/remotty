@@ -216,6 +216,7 @@ impl Store {
         thread_key: &str,
         workspace_id: &str,
         mode: LaneMode,
+        extra_turn_budget: i64,
     ) -> Result<LaneRecord> {
         if let Some(lane) = self.find_lane(chat_id, thread_key)? {
             return Ok(lane);
@@ -228,7 +229,7 @@ impl Store {
             mode,
             state: LaneState::Idle,
             codex_session_id: None,
-            extra_turn_budget: 0,
+            extra_turn_budget,
             waiting_since_ms: None,
         };
         self.with_conn(|conn| {
@@ -339,15 +340,21 @@ impl Store {
         Ok(())
     }
 
-    pub fn update_lane_mode(&self, lane_id: &str, mode: LaneMode) -> Result<()> {
+    pub fn update_lane_mode(
+        &self,
+        lane_id: &str,
+        mode: LaneMode,
+        extra_turn_budget: i64,
+    ) -> Result<()> {
         self.with_conn(|conn| {
             conn.execute(
                 r#"
                 UPDATE lanes
-                SET mode = ?2
+                SET mode = ?2,
+                    extra_turn_budget = ?3
                 WHERE lane_id = ?1
                 "#,
-                params![lane_id, mode_to_str(mode)],
+                params![lane_id, mode_to_str(mode), extra_turn_budget],
             )
         })?;
         Ok(())
@@ -480,7 +487,7 @@ mod tests {
     fn find_lane_returns_lane_for_chat_and_thread() {
         let (_dir, store) = temp_store();
         let created = store
-            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply)
+            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply, 0)
             .expect("lane");
 
         let fetched = store
@@ -497,7 +504,7 @@ mod tests {
     fn clear_lane_session_resets_session_fields_and_state() {
         let (_dir, store) = temp_store();
         let lane = store
-            .get_or_create_lane(42, "555", "workspace", LaneMode::CompletionChecks)
+            .get_or_create_lane(42, "555", "workspace", LaneMode::CompletionChecks, 0)
             .expect("lane");
         store
             .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
@@ -527,17 +534,17 @@ mod tests {
     }
 
     #[test]
-    fn update_lane_mode_changes_only_mode() {
+    fn update_lane_mode_changes_mode_and_budget() {
         let (_dir, store) = temp_store();
         let lane = store
-            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply)
+            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply, 0)
             .expect("lane");
         store
             .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
             .expect("state update");
 
         store
-            .update_lane_mode(&lane.lane_id, LaneMode::MaxTurns)
+            .update_lane_mode(&lane.lane_id, LaneMode::MaxTurns, 5)
             .expect("mode update");
 
         let lane = store
@@ -545,8 +552,20 @@ mod tests {
             .expect("query")
             .expect("lane exists");
         assert_eq!(lane.mode, LaneMode::MaxTurns);
+        assert_eq!(lane.extra_turn_budget, 5);
         assert_eq!(lane.state, LaneState::WaitingReply);
         assert_eq!(lane.codex_session_id.as_deref(), Some("session-1"));
         assert!(lane.waiting_since_ms.is_some());
+    }
+
+    #[test]
+    fn create_lane_uses_requested_budget_for_max_turns() {
+        let (_dir, store) = temp_store();
+
+        let lane = store
+            .get_or_create_lane(42, "555", "workspace", LaneMode::MaxTurns, 4)
+            .expect("lane");
+
+        assert_eq!(lane.extra_turn_budget, 4);
     }
 }

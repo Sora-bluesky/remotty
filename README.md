@@ -14,6 +14,7 @@ Implemented today:
 - `codex exec` and `codex exec resume` integration
 - attachment parsing and safe local attachment storage
 - `completion_checks` execution and automatic repair retry flow
+- automatic continuation for `infinite` and `max_turns`
 - progress message editing in Telegram
 - Telegram control commands for `/help`, `/status`, `/stop`, and `/mode`
 - DPAPI-backed local secret storage
@@ -62,6 +63,8 @@ cargo check
 /status
 /stop
 /mode completion_checks
+/mode infinite
+/mode max_turns 3
 ```
 
 6. Install the Windows service when you want background execution:
@@ -108,6 +111,7 @@ Important sections:
 - `codex`: CLI binary, model, sandbox, and approval mode
 - `storage`: SQLite path, temp path, and log path
 - `policy`: default lane behavior and output truncation
+- `policy.max_turns_limit`: default extra-turn cap for `max_turns`
 - `checks`: named completion-check profiles
 - `workspaces`: workspace mapping and default continuation prompt
 
@@ -118,6 +122,7 @@ Example `completion_checks` profile:
 default_mode = "completion_checks"
 progress_edit_interval_ms = 5000
 max_output_chars = 12000
+max_turns_limit = 3
 
 [checks.profiles.default]
 [[checks.profiles.default.commands]]
@@ -140,6 +145,14 @@ default_mode = "completion_checks"
 continue_prompt = "失敗した確認を直し、必要ならテストを追加して続けてください。"
 checks_profile = "default"
 ```
+
+Example `max_turns` control command:
+
+```text
+/mode max_turns 3
+```
+
+This keeps the lane in `waiting_reply` after up to three automatic continuation turns.
 
 ## Secret Handling
 
@@ -172,7 +185,6 @@ GitHub Actions runs:
 The `main` branch is protected and requires:
 
 - pull request based changes
-- one approval
 - resolved conversations
 - passing `ci`
 

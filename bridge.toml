@@ -25,6 +25,7 @@ log_dir = "state/logs"
 default_mode = "await_reply"
 progress_edit_interval_ms = 5000
 max_output_chars = 12000
+max_turns_limit = 3
 
 [[workspaces]]
 id = "main"
