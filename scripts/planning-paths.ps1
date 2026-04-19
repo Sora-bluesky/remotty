@@ -2,6 +2,11 @@
 param()
 
 function Get-CodexChannelsPlanningRootMarkerPath {
+    $explicitMarkerPath = [Environment]::GetEnvironmentVariable('CODEX_CHANNELS_PLANNING_ROOT_MARKER')
+    if (-not [string]::IsNullOrWhiteSpace($explicitMarkerPath)) {
+        return $explicitMarkerPath
+    }
+
     $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }
     return Join-Path $localAppData 'codex-channels\planning-root.txt'
 }

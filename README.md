@@ -85,6 +85,12 @@ cargo run -- service uninstall
 pwsh -NoProfile -File scripts/sync-roadmap.ps1
 ```
 
+8. Initialize the external planning workspace in one step:
+
+```powershell
+pwsh -NoProfile -File scripts/setup-planning.ps1
+```
+
 ## Configuration
 
 The main local config file is [`bridge.toml`](bridge.toml).
@@ -169,6 +175,7 @@ The `main` branch is protected and requires:
 Maintainer planning files live outside the repository, following the same pattern as `winsmux`.
 
 - `scripts/sync-roadmap.ps1` reads `backlog.yaml` and writes `ROADMAP.md`
+- `scripts/setup-planning.ps1` creates the external planning root, writes the marker, copies examples, and runs the first sync
 - `scripts/planning-paths.ps1` resolves the planning root from `CODEX_CHANNELS_PLANNING_ROOT` or `%LOCALAPPDATA%\\codex-channels\\planning-root.txt`
 - tracked files under `tasks/` are example-only bootstrap files
 
