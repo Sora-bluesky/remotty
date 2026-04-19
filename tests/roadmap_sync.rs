@@ -150,6 +150,64 @@ fn planning_paths_prefers_env_override() -> Result<()> {
 }
 
 #[test]
+fn planning_paths_prefers_mainvault_over_duplicate_vault() -> Result<()> {
+    let temp = TempDir::new()?;
+    let canonical_root = temp
+        .path()
+        .join("iCloudDrive")
+        .join("iCloud~md~obsidian")
+        .join("MainVault")
+        .join("Projects")
+        .join("codex-channels")
+        .join("planning");
+    let duplicate_root = temp
+        .path()
+        .join("iCloudDrive")
+        .join("iCloud~md~obsidian")
+        .join("A-MainVault")
+        .join("Projects")
+        .join("codex-channels")
+        .join("planning");
+
+    fs::create_dir_all(&canonical_root)?;
+    fs::create_dir_all(&duplicate_root)?;
+    fs::write(canonical_root.join("backlog.yaml"), "- id: TASK-001\n")?;
+    fs::write(canonical_root.join("ROADMAP.md"), "# canonical\n")?;
+    fs::write(canonical_root.join("roadmap-title-ja.psd1"), "@{\n}\n")?;
+    fs::write(duplicate_root.join("backlog.yaml"), "- id: TASK-002\n")?;
+    fs::write(duplicate_root.join("ROADMAP.md"), "# duplicate\n")?;
+
+    let script = format!(
+        ". '{}' ; Get-CodexChannelsDefaultPlanningRoot",
+        repo_root()
+            .join("scripts")
+            .join("planning-paths.ps1")
+            .display()
+    );
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(script)
+        .env("USERPROFILE", temp.path())
+        .env("LOCALAPPDATA", temp.path().join("LocalAppData"))
+        .output()
+        .context("failed to run planning-paths.ps1")?;
+
+    assert!(
+        output.status.success(),
+        "planning-paths failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let resolved = fs::canonicalize(String::from_utf8(output.stdout)?.trim())?;
+    let expected = fs::canonicalize(&canonical_root)?;
+    assert_eq!(resolved, expected);
+
+    Ok(())
+}
+
+#[test]
 fn setup_planning_creates_live_files_and_marker() -> Result<()> {
     let temp = TempDir::new()?;
     let planning_root = temp.path().join("planning-root");

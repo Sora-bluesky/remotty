@@ -34,6 +34,7 @@ function Find-CodexChannelsPlanningRoot {
 
     try {
         $backlogFiles = Get-ChildItem -LiteralPath $UserProfile -Filter 'backlog.yaml' -File -Recurse -Depth 8 -ErrorAction SilentlyContinue
+        $candidates = New-Object System.Collections.Generic.List[string]
         foreach ($file in $backlogFiles) {
             $directory = $file.DirectoryName
             if ([string]::IsNullOrWhiteSpace($directory)) {
@@ -44,9 +45,30 @@ function Find-CodexChannelsPlanningRoot {
                 continue
             }
 
-            if (Test-Path -LiteralPath (Join-Path $directory 'ROADMAP.md')) {
-                return $directory
+            if (-not (Test-Path -LiteralPath (Join-Path $directory 'ROADMAP.md'))) {
+                continue
             }
+
+            if (-not (Test-Path -LiteralPath (Join-Path $directory 'roadmap-title-ja.psd1'))) {
+                continue
+            }
+
+            $candidates.Add($directory) | Out-Null
+        }
+
+        if ($candidates.Count -eq 0) {
+            return $null
+        }
+
+        $preferred = @(
+            $candidates | Sort-Object `
+                @{ Expression = { if ($_ -match '[\\/]iCloudDrive[\\/]iCloud~md~obsidian[\\/]MainVault[\\/]Projects[\\/]codex-channels[\\/]planning$') { 0 } else { 1 } } }, `
+                @{ Expression = { $_.Length } }, `
+                @{ Expression = { $_ } }
+        )
+
+        if ($preferred.Count -gt 0) {
+            return [string]$preferred[0]
         }
     } catch {
         return $null
