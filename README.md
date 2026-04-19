@@ -154,6 +154,8 @@ GitHub Actions runs:
 
 - `cargo fmt --check`
 - `cargo check`
+- `cargo test`
+- `pwsh -NoProfile -File scripts/audit-public-surface.ps1`
 
 The `main` branch is protected and requires:
 
