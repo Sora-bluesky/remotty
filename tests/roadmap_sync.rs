@@ -135,3 +135,80 @@ fn planning_paths_prefers_env_override() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn setup_planning_creates_live_files_and_marker() -> Result<()> {
+    let temp = TempDir::new()?;
+    let planning_root = temp.path().join("planning-root");
+    let marker_path = temp.path().join("planning-root.txt");
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(repo_root().join("scripts").join("setup-planning.ps1"))
+        .arg("-PlanningRoot")
+        .arg(&planning_root)
+        .arg("-MarkerPath")
+        .arg(&marker_path)
+        .output()
+        .context("failed to run setup-planning.ps1")?;
+
+    assert!(
+        output.status.success(),
+        "setup-planning failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(&marker_path)?,
+        planning_root.display().to_string()
+    );
+    assert!(planning_root.join("backlog.yaml").exists());
+    assert!(planning_root.join("roadmap-title-ja.psd1").exists());
+    assert!(planning_root.join("ROADMAP.md").exists());
+
+    let roadmap = fs::read_to_string(planning_root.join("ROADMAP.md"))?;
+    assert!(roadmap.contains("# ロードマップ"));
+    assert!(roadmap.contains("ブリッジ基盤を作成"));
+
+    Ok(())
+}
+
+#[test]
+fn setup_planning_preserves_existing_live_files() -> Result<()> {
+    let temp = TempDir::new()?;
+    let planning_root = temp.path().join("planning-root");
+    let marker_path = temp.path().join("planning-root.txt");
+    fs::create_dir_all(&planning_root)?;
+
+    let existing_backlog = planning_root.join("backlog.yaml");
+    write_file(
+        &existing_backlog,
+        "# === v9.9.9: Custom ===\n- id: TASK-999\n    title: Keep custom backlog\n    status: active\n    priority: P0\n    target_version: v9.9.9\n    repo: codex-channels\n",
+    )?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(repo_root().join("scripts").join("setup-planning.ps1"))
+        .arg("-PlanningRoot")
+        .arg(&planning_root)
+        .arg("-MarkerPath")
+        .arg(&marker_path)
+        .output()
+        .context("failed to run setup-planning.ps1")?;
+
+    assert!(
+        output.status.success(),
+        "setup-planning failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let backlog = fs::read_to_string(&existing_backlog)?;
+    assert!(backlog.contains("Keep custom backlog"));
+
+    let roadmap = fs::read_to_string(planning_root.join("ROADMAP.md"))?;
+    assert!(roadmap.contains("Keep custom backlog"));
+
+    Ok(())
+}
