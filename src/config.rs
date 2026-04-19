@@ -1,8 +1,12 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
+
+#[path = "checks.rs"]
+pub mod checks;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -11,6 +15,8 @@ pub struct Config {
     pub codex: CodexConfig,
     pub storage: StorageConfig,
     pub policy: PolicyConfig,
+    #[serde(default)]
+    pub checks: ChecksConfig,
     pub workspaces: Vec<WorkspaceConfig>,
 }
 
@@ -60,6 +66,36 @@ pub struct PolicyConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ChecksConfig {
+    #[serde(default)]
+    pub profiles: BTreeMap<String, CheckProfile>,
+}
+
+impl Default for ChecksConfig {
+    fn default() -> Self {
+        let mut profiles = BTreeMap::new();
+        profiles.insert("default".to_owned(), CheckProfile::default());
+        Self { profiles }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct CheckProfile {
+    #[serde(default)]
+    pub commands: Vec<CheckCommand>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct CheckCommand {
+    pub name: String,
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_check_timeout_sec")]
+    pub timeout_sec: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct WorkspaceConfig {
     pub id: String,
     pub path: PathBuf,
@@ -78,6 +114,10 @@ pub enum LaneMode {
     MaxTurns,
 }
 
+fn default_check_timeout_sec() -> u64 {
+    300
+}
+
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -94,6 +134,39 @@ impl Config {
         }
         if self.workspaces.is_empty() {
             bail!("workspaces must not be empty");
+        }
+        for workspace in &self.workspaces {
+            if !self.checks.profiles.contains_key(&workspace.checks_profile) {
+                bail!(
+                    "workspace '{}' references unknown checks profile '{}'",
+                    workspace.id,
+                    workspace.checks_profile
+                );
+            }
+        }
+        for (profile_name, profile) in &self.checks.profiles {
+            for command in &profile.commands {
+                if command.name.trim().is_empty() {
+                    bail!(
+                        "checks profile '{}' has a command with an empty name",
+                        profile_name
+                    );
+                }
+                if command.program.trim().is_empty() {
+                    bail!(
+                        "checks profile '{}' has a command '{}' with an empty program",
+                        profile_name,
+                        command.name
+                    );
+                }
+                if command.timeout_sec == 0 {
+                    bail!(
+                        "checks profile '{}' has a command '{}' with timeout_sec = 0",
+                        profile_name,
+                        command.name
+                    );
+                }
+            }
         }
         Ok(())
     }

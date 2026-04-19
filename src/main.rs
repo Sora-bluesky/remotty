@@ -1,31 +1,64 @@
-mod codex;
-mod config;
-mod engine;
-mod service;
-mod store;
-mod telegram;
-mod windows_secret;
-
 use std::fs;
+use std::path::PathBuf;
 
 use anyhow::Result;
-use config::{Config, RunMode};
+use codex_telegram_bridge::cli::{CliCommand, SecretCommand, ServiceCommand, parse_args};
+use codex_telegram_bridge::config::{Config, RunMode};
+use codex_telegram_bridge::engine;
+use codex_telegram_bridge::service;
+use codex_telegram_bridge::windows_secret::{delete_secret, store_secret};
 use tracing_subscriber::EnvFilter;
-use windows_secret::{delete_secret, store_secret};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if handle_secret_commands()? {
-        return Ok(());
-    }
-
-    let config = Config::load("bridge.toml")?;
-    ensure_dirs(&config)?;
-    init_tracing();
-
-    match config.service.run_mode {
-        RunMode::Console => engine::run_console(config).await,
-        RunMode::Service => service::run_service_mode(config),
+    match parse_args(std::env::args().skip(1))? {
+        CliCommand::Run { config_path } => run_bridge(config_path, false).await,
+        CliCommand::Secret(SecretCommand::Set { key, value }) => {
+            let path = store_secret(&key, &value)?;
+            println!("stored secret at {}", path.display());
+            Ok(())
+        }
+        CliCommand::Secret(SecretCommand::Delete { key }) => {
+            delete_secret(&key)?;
+            println!("deleted secret {key}");
+            Ok(())
+        }
+        CliCommand::Service(ServiceCommand::Run { config_path }) => {
+            run_bridge(config_path, true).await
+        }
+        CliCommand::Service(ServiceCommand::Install { config_path }) => {
+            let config_path = service::install_service(config_path)?;
+            println!(
+                "installed windows service `{}` with config {}",
+                service::service_name(),
+                config_path.display()
+            );
+            Ok(())
+        }
+        CliCommand::Service(ServiceCommand::Uninstall) => {
+            service::uninstall_service()?;
+            println!("uninstalled windows service `{}`", service::service_name());
+            Ok(())
+        }
+        CliCommand::Service(ServiceCommand::Start) => {
+            service::start_installed_service()?;
+            println!("started windows service `{}`", service::service_name());
+            Ok(())
+        }
+        CliCommand::Service(ServiceCommand::Stop) => {
+            service::stop_installed_service()?;
+            println!("stopped windows service `{}`", service::service_name());
+            Ok(())
+        }
+        CliCommand::Service(ServiceCommand::Status) => {
+            let status = service::installed_service_status()?;
+            println!(
+                "windows service `{}` status: {}",
+                service::service_name(),
+                service::format_service_status(&status)
+            );
+            Ok(())
+        }
     }
 }
 
@@ -44,35 +77,17 @@ fn init_tracing() {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
-fn handle_secret_commands() -> Result<bool> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 || args[1] != "secret" {
-        return Ok(false);
-    }
+async fn run_bridge(config_path: PathBuf, force_service_mode: bool) -> Result<()> {
+    let config = Config::load(&config_path)?;
+    ensure_dirs(&config)?;
+    init_tracing();
 
-    match args.get(2).map(String::as_str) {
-        Some("set") => {
-            let key = args
-                .get(3)
-                .ok_or_else(|| anyhow::anyhow!("missing secret key"))?;
-            let value = args
-                .get(4)
-                .ok_or_else(|| anyhow::anyhow!("missing secret value"))?;
-            let path = store_secret(key, value)?;
-            println!("stored secret at {}", path.display());
-        }
-        Some("delete") => {
-            let key = args
-                .get(3)
-                .ok_or_else(|| anyhow::anyhow!("missing secret key"))?;
-            delete_secret(key)?;
-            println!("deleted secret {key}");
-        }
-        _ => {
-            println!("usage:");
-            println!("  codex-telegram-bridge secret set <key> <value>");
-            println!("  codex-telegram-bridge secret delete <key>");
+    if force_service_mode {
+        service::run_service_mode(config)
+    } else {
+        match config.service.run_mode {
+            RunMode::Console => engine::run_console(config).await,
+            RunMode::Service => service::run_service_mode(config),
         }
     }
-    Ok(true)
 }

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use anyhow::{Context, Result};
@@ -16,6 +17,58 @@ pub struct CodexOutcome {
     pub approval_pending: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct CodexRequest {
+    pub prompt: String,
+    pub image_paths: Vec<PathBuf>,
+}
+
+impl CodexRequest {
+    pub fn new(prompt: impl Into<String>) -> Self {
+        Self {
+            prompt: prompt.into(),
+            image_paths: Vec::new(),
+        }
+    }
+
+    pub fn with_images(
+        prompt: impl Into<String>,
+        image_paths: impl IntoIterator<Item = PathBuf>,
+    ) -> Self {
+        Self {
+            prompt: prompt.into(),
+            image_paths: image_paths.into_iter().collect(),
+        }
+    }
+
+    fn into_args(self) -> Vec<String> {
+        let mut args = vec![self.prompt];
+        for image_path in self.image_paths {
+            args.push("--image".to_owned());
+            args.push(image_path.display().to_string());
+        }
+        args
+    }
+}
+
+impl From<&str> for CodexRequest {
+    fn from(prompt: &str) -> Self {
+        Self::new(prompt)
+    }
+}
+
+impl From<&String> for CodexRequest {
+    fn from(prompt: &String) -> Self {
+        Self::new(prompt.clone())
+    }
+}
+
+impl From<String> for CodexRequest {
+    fn from(prompt: String) -> Self {
+        Self::new(prompt)
+    }
+}
+
 #[derive(Clone)]
 pub struct CodexRunner {
     config: CodexConfig,
@@ -26,9 +79,13 @@ impl CodexRunner {
         Self { config }
     }
 
-    pub async fn start(&self, workspace: &WorkspaceConfig, prompt: &str) -> Result<CodexOutcome> {
+    pub async fn start(
+        &self,
+        workspace: &WorkspaceConfig,
+        request: impl Into<CodexRequest>,
+    ) -> Result<CodexOutcome> {
         let mut args = self.base_args(workspace);
-        args.push(prompt.to_owned());
+        args.extend(request.into().into_args());
         self.run_command(args, &workspace.path).await
     }
 
@@ -36,15 +93,15 @@ impl CodexRunner {
         &self,
         workspace: &WorkspaceConfig,
         session_id: &str,
-        prompt: &str,
+        request: impl Into<CodexRequest>,
     ) -> Result<CodexOutcome> {
-        let args = vec![
+        let mut args = vec![
             "exec".to_owned(),
             "resume".to_owned(),
             session_id.to_owned(),
-            prompt.to_owned(),
-            "--json".to_owned(),
         ];
+        args.extend(request.into().into_args());
+        args.push("--json".to_owned());
         self.run_command(args, &workspace.path).await
     }
 
@@ -140,5 +197,41 @@ impl CodexRunner {
             exit_code: status.code(),
             approval_pending,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CodexRequest;
+    use std::path::PathBuf;
+
+    #[test]
+    fn request_without_images_keeps_prompt_only() {
+        let args = CodexRequest::new("hello").into_args();
+
+        assert_eq!(args, vec!["hello".to_owned()]);
+    }
+
+    #[test]
+    fn request_with_images_appends_image_flags() {
+        let args = CodexRequest::with_images(
+            "hello",
+            [
+                PathBuf::from("C:/tmp/one.png"),
+                PathBuf::from("C:/tmp/two.png"),
+            ],
+        )
+        .into_args();
+
+        assert_eq!(
+            args,
+            vec![
+                "hello".to_owned(),
+                "--image".to_owned(),
+                "C:/tmp/one.png".to_owned(),
+                "--image".to_owned(),
+                "C:/tmp/two.png".to_owned(),
+            ]
+        );
     }
 }

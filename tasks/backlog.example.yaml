@@ -1,0 +1,22 @@
+# === v0.1.0: Bootstrap ===
+- id: TASK-001
+    title: Create bridge foundation
+    status: done
+    priority: P0
+    target_version: v0.1.0
+    repo: codex-channels
+
+- id: TASK-002
+    title: Add Windows service management commands
+    status: active
+    priority: P1
+    target_version: v0.1.0
+    repo: codex-channels
+
+# === v0.2.0: Next capabilities ===
+- id: TASK-003
+    title: Implement completion checks follow-up flow
+    status: backlog
+    priority: P0
+    target_version: v0.2.0
+    repo: codex-channels
