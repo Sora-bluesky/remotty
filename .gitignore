@@ -1,0 +1,10 @@
+/target/
+/state/
+/.idea/
+/.vscode/
+
+# Internal handoff artifacts must stay out of version control.
+/docs/handoff.md
+/docs/HANDOFF.md
+/HANDOFF.md
+/handoff.md

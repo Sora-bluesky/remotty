@@ -1,0 +1,37 @@
+[service]
+run_mode = "console"
+poll_timeout_sec = 30
+shutdown_grace_sec = 15
+
+[telegram]
+token_secret_ref = "codex-telegram-bot"
+allowed_chat_types = ["private"]
+admin_sender_ids = [123456789]
+
+[codex]
+binary = "codex"
+model = "gpt-5.4"
+sandbox = "workspace-write"
+approval = "on-request"
+profile = "default"
+
+[storage]
+db_path = "state/bridge.db"
+state_dir = "state"
+temp_dir = "state/tmp"
+log_dir = "state/logs"
+
+[policy]
+default_mode = "await_reply"
+progress_edit_interval_ms = 5000
+max_output_chars = 12000
+
+[[workspaces]]
+id = "main"
+path = "C:/Users/komei/Documents/Projects/apps/codex-channels"
+writable_roots = [
+  "C:/Users/komei/Documents/Projects/apps/codex-channels"
+]
+default_mode = "await_reply"
+continue_prompt = "必要な確認を進めて、止まる理由がある時だけ要点を短く伝えてください。"
+checks_profile = "default"
