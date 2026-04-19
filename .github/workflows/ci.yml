@@ -30,3 +30,6 @@ jobs:
 
       - name: Test
         run: cargo test
+
+      - name: Public surface audit
+        run: pwsh -NoProfile -File scripts/audit-public-surface.ps1
