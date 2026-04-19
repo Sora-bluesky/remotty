@@ -27,6 +27,26 @@ pub struct IncomingMessage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TelegramControlCommand {
+    Help,
+    Status,
+    Stop,
+    Mode(String),
+}
+
+impl IncomingMessage {
+    pub fn control_command(&self) -> Option<TelegramControlCommand> {
+        parse_control_command(&self.text)
+    }
+}
+
+impl TelegramControlCommand {
+    pub fn parse(text: &str) -> Option<Self> {
+        parse_control_command(text)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelegramAttachment {
     pub kind: TelegramAttachmentKind,
     pub file_id: String,
@@ -463,6 +483,49 @@ fn render_attachment_summary(attachments: &[TelegramAttachment]) -> String {
         .join("\n")
 }
 
+pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
+    let mut parts = text.trim().split_whitespace();
+    let command = parse_control_command_name(parts.next()?)?;
+
+    if command.eq_ignore_ascii_case("help") {
+        return parts
+            .next()
+            .is_none()
+            .then_some(TelegramControlCommand::Help);
+    }
+    if command.eq_ignore_ascii_case("status") {
+        return parts
+            .next()
+            .is_none()
+            .then_some(TelegramControlCommand::Status);
+    }
+    if command.eq_ignore_ascii_case("stop") {
+        return parts
+            .next()
+            .is_none()
+            .then_some(TelegramControlCommand::Stop);
+    }
+    if command.eq_ignore_ascii_case("mode") {
+        let value = parts.next()?.trim();
+        if value.is_empty() || parts.next().is_some() {
+            return None;
+        }
+        return Some(TelegramControlCommand::Mode(value.to_ascii_lowercase()));
+    }
+
+    None
+}
+
+fn parse_control_command_name(token: &str) -> Option<&str> {
+    let token = token.strip_prefix('/')?;
+    let (command, _) = token.split_once('@').unwrap_or((token, ""));
+    if command.is_empty() {
+        None
+    } else {
+        Some(command)
+    }
+}
+
 fn write_downloaded_attachment(
     directory: &Path,
     attachment: &TelegramAttachment,
@@ -895,5 +958,74 @@ mod tests {
             b"hello"
         );
         assert_eq!(saved.bytes_written, 5);
+    }
+
+    #[test]
+    fn parses_help_command() {
+        assert_eq!(
+            parse_control_command(" /help "),
+            Some(TelegramControlCommand::Help)
+        );
+    }
+
+    #[test]
+    fn parses_status_command_with_bot_suffix() {
+        assert_eq!(
+            parse_control_command("/status@codex_channels_bot"),
+            Some(TelegramControlCommand::Status)
+        );
+    }
+
+    #[test]
+    fn parses_mode_command_argument() {
+        assert_eq!(
+            parse_control_command("/mode completion_checks"),
+            Some(TelegramControlCommand::Mode("completion_checks".to_owned()))
+        );
+    }
+
+    #[test]
+    fn ignores_mode_command_without_argument() {
+        assert_eq!(parse_control_command("/mode"), None);
+    }
+
+    #[test]
+    fn parses_stop_command() {
+        assert_eq!(
+            TelegramControlCommand::parse("/stop"),
+            Some(TelegramControlCommand::Stop)
+        );
+    }
+
+    #[test]
+    fn reads_control_command_from_incoming_message_text() {
+        let message = IncomingMessage {
+            update_id: 1,
+            chat_id: 10,
+            chat_type: "private".to_owned(),
+            sender_id: Some(20),
+            text: " /status ".to_owned(),
+            attachments: Vec::new(),
+            telegram_message_id: 30,
+            thread_key: "dm".to_owned(),
+            payload_json: "{}".to_owned(),
+        };
+
+        assert_eq!(
+            message.control_command(),
+            Some(TelegramControlCommand::Status)
+        );
+    }
+
+    #[test]
+    fn rejects_extra_arguments_for_simple_commands() {
+        assert_eq!(parse_control_command("/help now"), None);
+        assert_eq!(parse_control_command("/status now"), None);
+        assert_eq!(parse_control_command("/stop now"), None);
+    }
+
+    #[test]
+    fn rejects_mode_command_with_extra_arguments() {
+        assert_eq!(parse_control_command("/mode completion checks"), None);
     }
 }

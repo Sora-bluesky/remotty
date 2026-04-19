@@ -8,6 +8,7 @@ use crate::config::{Config, LaneMode, checks::CheckRunSummary, checks::run_profi
 use crate::store::{AuthorizedSender, LaneState, NewRun, Store};
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
+    TelegramControlCommand,
 };
 use crate::windows_secret::load_secret;
 
@@ -102,6 +103,29 @@ async fn handle_message(
     update: IncomingMessage,
 ) -> Result<()> {
     let workspace = config.default_workspace();
+    if let Some(command) = update.control_command() {
+        let reply = handle_control_command(
+            store,
+            workspace,
+            update.chat_id,
+            &update.thread_key,
+            command,
+        )?;
+        let sent = telegram.send_message(update.chat_id, &reply).await?;
+        if let Some(lane) = store.find_lane(update.chat_id, &update.thread_key)? {
+            store.insert_message(
+                &lane.lane_id,
+                None,
+                "outbound",
+                "telegram_control",
+                Some(sent.message_id),
+                Some(&reply),
+                None,
+            )?;
+        }
+        return Ok(());
+    }
+
     let lane = store.get_or_create_lane(
         update.chat_id,
         &update.thread_key,
@@ -225,6 +249,37 @@ async fn handle_message(
     Ok(())
 }
 
+fn handle_control_command(
+    store: &Store,
+    workspace: &crate::config::WorkspaceConfig,
+    chat_id: i64,
+    thread_key: &str,
+    command: TelegramControlCommand,
+) -> Result<String> {
+    match command {
+        TelegramControlCommand::Help => Ok(format_help_message()),
+        TelegramControlCommand::Status => {
+            Ok(format_status_message(store.find_lane(chat_id, thread_key)?))
+        }
+        TelegramControlCommand::Stop => {
+            let Some(lane) = store.find_lane(chat_id, thread_key)? else {
+                return Ok("停止する対象はありません。".to_owned());
+            };
+            store.clear_lane_session(&lane.lane_id)?;
+            Ok("現在のセッションを止めました。次の入力は新しい開始として扱います。".to_owned())
+        }
+        TelegramControlCommand::Mode(raw_mode) => {
+            let mode = parse_lane_mode_name(&raw_mode)?;
+            let lane = store.get_or_create_lane(chat_id, thread_key, &workspace.id, mode)?;
+            store.update_lane_mode(&lane.lane_id, mode)?;
+            Ok(format!(
+                "この会話のモードを `{}` に更新しました。",
+                lane_mode_name(mode)
+            ))
+        }
+    }
+}
+
 fn truncate(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_owned();
@@ -289,6 +344,35 @@ fn format_runtime_failure_message() -> String {
         .to_owned()
 }
 
+fn format_help_message() -> String {
+    [
+        "使えるコマンド:",
+        "/help",
+        "/status",
+        "/stop",
+        "/mode await_reply|completion_checks|infinite|max_turns",
+    ]
+    .join("\n")
+}
+
+fn format_status_message(lane: Option<crate::store::LaneRecord>) -> String {
+    let Some(lane) = lane else {
+        return "この会話にはまだレーンがありません。".to_owned();
+    };
+
+    let session = if lane.codex_session_id.is_some() {
+        "あり"
+    } else {
+        "なし"
+    };
+    format!(
+        "状態: `{}`\nモード: `{}`\nセッション: {}",
+        lane_state_name(lane.state),
+        lane_mode_name(lane.mode),
+        session
+    )
+}
+
 fn build_user_request(text: &str, attachments: &[SavedTelegramAttachment]) -> CodexRequest {
     let image_paths = attachments
         .iter()
@@ -341,6 +425,37 @@ fn format_reply_with_failed_checks(last_message: &str, summary: &CheckRunSummary
     sections.join("\n\n")
 }
 
+fn parse_lane_mode_name(value: &str) -> Result<LaneMode> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "await_reply" => Ok(LaneMode::AwaitReply),
+        "completion_checks" => Ok(LaneMode::CompletionChecks),
+        "infinite" => Ok(LaneMode::Infinite),
+        "max_turns" => Ok(LaneMode::MaxTurns),
+        _ => Err(anyhow!(
+            "不正なモードです。`await_reply`、`completion_checks`、`infinite`、`max_turns` を使ってください。"
+        )),
+    }
+}
+
+fn lane_mode_name(mode: LaneMode) -> &'static str {
+    match mode {
+        LaneMode::AwaitReply => "await_reply",
+        LaneMode::CompletionChecks => "completion_checks",
+        LaneMode::Infinite => "infinite",
+        LaneMode::MaxTurns => "max_turns",
+    }
+}
+
+fn lane_state_name(state: LaneState) -> &'static str {
+    match state {
+        LaneState::Running => "running",
+        LaneState::WaitingReply => "waiting_reply",
+        LaneState::Idle => "idle",
+        LaneState::NeedsLocalApproval => "needs_local_approval",
+        LaneState::Failed => "failed",
+    }
+}
+
 fn seed_admin_senders(store: &Store, sender_ids: &[i64]) -> Result<()> {
     for sender_id in sender_ids {
         store.upsert_authorized_sender(AuthorizedSender {
@@ -373,8 +488,11 @@ impl LaneStateLabel for LaneState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::WorkspaceConfig;
+    use crate::store::Store;
     use crate::telegram::{SavedTelegramAttachment, TelegramAttachment, TelegramRemoteFile};
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     fn failed_summary() -> CheckRunSummary {
         CheckRunSummary {
@@ -437,6 +555,76 @@ mod tests {
         assert!(request.prompt.contains("C:/tmp/report.pdf"));
     }
 
+    #[test]
+    fn format_status_message_without_lane_is_clear() {
+        assert_eq!(
+            format_status_message(None),
+            "この会話にはまだレーンがありません。"
+        );
+    }
+
+    #[test]
+    fn parse_lane_mode_name_accepts_completion_checks() {
+        assert_eq!(
+            parse_lane_mode_name("completion_checks").expect("mode should parse"),
+            LaneMode::CompletionChecks
+        );
+    }
+
+    #[test]
+    fn parse_lane_mode_name_rejects_unknown_mode() {
+        let error = parse_lane_mode_name("unknown").expect_err("mode should fail");
+        assert!(error.to_string().contains("不正なモード"));
+    }
+
+    #[test]
+    fn mode_command_updates_lane_mode() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let workspace = test_workspace();
+
+        let reply = handle_control_command(
+            &store,
+            &workspace,
+            10,
+            "dm",
+            TelegramControlCommand::Mode("completion_checks".to_owned()),
+        )
+        .expect("mode command should succeed");
+
+        let lane = store
+            .find_lane(10, "dm")
+            .expect("lane lookup should succeed")
+            .expect("lane should exist");
+        assert_eq!(lane.mode, LaneMode::CompletionChecks);
+        assert!(reply.contains("completion_checks"));
+    }
+
+    #[test]
+    fn stop_command_clears_session() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let workspace = test_workspace();
+        let lane = store
+            .get_or_create_lane(20, "dm", &workspace.id, LaneMode::AwaitReply)
+            .expect("lane should be created");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
+            .expect("lane should update");
+
+        let reply =
+            handle_control_command(&store, &workspace, 20, "dm", TelegramControlCommand::Stop)
+                .expect("stop command should succeed");
+
+        let lane = store
+            .find_lane(20, "dm")
+            .expect("lane lookup should succeed")
+            .expect("lane should exist");
+        assert_eq!(lane.state, LaneState::Idle);
+        assert_eq!(lane.codex_session_id, None);
+        assert!(reply.contains("セッションを止めました"));
+    }
+
     fn saved_attachment(
         kind: TelegramAttachmentKind,
         local_path: &str,
@@ -462,6 +650,17 @@ mod tests {
             },
             local_path: PathBuf::from(local_path),
             bytes_written: 12,
+        }
+    }
+
+    fn test_workspace() -> WorkspaceConfig {
+        WorkspaceConfig {
+            id: "main".to_owned(),
+            path: PathBuf::from("C:/workspace"),
+            writable_roots: vec![PathBuf::from("C:/workspace")],
+            default_mode: LaneMode::AwaitReply,
+            continue_prompt: "continue".to_owned(),
+            checks_profile: "default".to_owned(),
         }
     }
 }

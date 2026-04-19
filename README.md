@@ -15,6 +15,7 @@ Implemented today:
 - attachment parsing and safe local attachment storage
 - `completion_checks` execution and automatic repair retry flow
 - progress message editing in Telegram
+- Telegram control commands for `/help`, `/status`, `/stop`, and `/mode`
 - DPAPI-backed local secret storage
 - Windows service entry point
 - GitHub Actions CI for `cargo fmt --check` and `cargo check`
@@ -23,7 +24,6 @@ Implemented today:
 Not implemented yet:
 
 - production-grade service installation flow
-- richer Telegram command set
 - end-to-end tests around live Telegram and `codex` execution
 
 ## Requirements
@@ -54,6 +54,15 @@ cargo run
 ```powershell
 cargo fmt --check
 cargo check
+```
+
+5. Use Telegram commands inside the chat when needed:
+
+```text
+/help
+/status
+/stop
+/mode completion_checks
 ```
 
 ## Configuration

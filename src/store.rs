@@ -322,6 +322,37 @@ impl Store {
         Ok(())
     }
 
+    pub fn clear_lane_session(&self, lane_id: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE lanes
+                SET state = 'idle',
+                    codex_session_id = NULL,
+                    extra_turn_budget = 0,
+                    waiting_since_ms = NULL
+                WHERE lane_id = ?1
+                "#,
+                params![lane_id],
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn update_lane_mode(&self, lane_id: &str, mode: LaneMode) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE lanes
+                SET mode = ?2
+                WHERE lane_id = ?1
+                "#,
+                params![lane_id, mode_to_str(mode)],
+            )
+        })?;
+        Ok(())
+    }
+
     pub fn insert_run(&self, new_run: NewRun) -> Result<RunRecord> {
         let run = RunRecord {
             run_id: Uuid::new_v4().to_string(),
@@ -430,5 +461,92 @@ fn mode_from_str(value: &str) -> std::result::Result<LaneMode, String> {
         "completion_checks" => Ok(LaneMode::CompletionChecks),
         "max_turns" => Ok(LaneMode::MaxTurns),
         other => Err(format!("unknown lane mode: {other}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+    use tempfile::{TempDir, tempdir};
+
+    fn temp_store() -> (TempDir, Store) {
+        let dir = tempdir().expect("temp dir");
+        let store = Store::open(dir.path().join("store.db")).expect("store");
+        (dir, store)
+    }
+
+    #[test]
+    fn find_lane_returns_lane_for_chat_and_thread() {
+        let (_dir, store) = temp_store();
+        let created = store
+            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply)
+            .expect("lane");
+
+        let fetched = store
+            .find_lane(42, "555")
+            .expect("query")
+            .expect("lane exists");
+
+        assert_eq!(fetched.lane_id, created.lane_id);
+        assert_eq!(fetched.chat_id, 42);
+        assert_eq!(fetched.thread_key, "555");
+    }
+
+    #[test]
+    fn clear_lane_session_resets_session_fields_and_state() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(42, "555", "workspace", LaneMode::CompletionChecks)
+            .expect("lane");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
+            .expect("state update");
+        store
+            .with_conn(|conn| {
+                conn.execute(
+                    "UPDATE lanes SET extra_turn_budget = 2 WHERE lane_id = ?1",
+                    params![&lane.lane_id],
+                )
+            })
+            .expect("budget update");
+
+        store
+            .clear_lane_session(&lane.lane_id)
+            .expect("session clear");
+
+        let lane = store
+            .find_lane(42, "555")
+            .expect("query")
+            .expect("lane exists");
+        assert_eq!(lane.state, LaneState::Idle);
+        assert_eq!(lane.codex_session_id, None);
+        assert_eq!(lane.extra_turn_budget, 0);
+        assert_eq!(lane.waiting_since_ms, None);
+        assert_eq!(lane.mode, LaneMode::CompletionChecks);
+    }
+
+    #[test]
+    fn update_lane_mode_changes_only_mode() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(42, "555", "workspace", LaneMode::AwaitReply)
+            .expect("lane");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
+            .expect("state update");
+
+        store
+            .update_lane_mode(&lane.lane_id, LaneMode::MaxTurns)
+            .expect("mode update");
+
+        let lane = store
+            .find_lane(42, "555")
+            .expect("query")
+            .expect("lane exists");
+        assert_eq!(lane.mode, LaneMode::MaxTurns);
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id.as_deref(), Some("session-1"));
+        assert!(lane.waiting_since_ms.is_some());
     }
 }
