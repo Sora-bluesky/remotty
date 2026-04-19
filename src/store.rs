@@ -330,7 +330,6 @@ impl Store {
                 UPDATE lanes
                 SET state = 'idle',
                     codex_session_id = NULL,
-                    extra_turn_budget = 0,
                     waiting_since_ms = NULL
                 WHERE lane_id = ?1
                 "#,
@@ -504,7 +503,7 @@ mod tests {
     fn clear_lane_session_resets_session_fields_and_state() {
         let (_dir, store) = temp_store();
         let lane = store
-            .get_or_create_lane(42, "555", "workspace", LaneMode::CompletionChecks, 0)
+            .get_or_create_lane(42, "555", "workspace", LaneMode::MaxTurns, 2)
             .expect("lane");
         store
             .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
@@ -528,9 +527,9 @@ mod tests {
             .expect("lane exists");
         assert_eq!(lane.state, LaneState::Idle);
         assert_eq!(lane.codex_session_id, None);
-        assert_eq!(lane.extra_turn_budget, 0);
+        assert_eq!(lane.extra_turn_budget, 2);
         assert_eq!(lane.waiting_since_ms, None);
-        assert_eq!(lane.mode, LaneMode::CompletionChecks);
+        assert_eq!(lane.mode, LaneMode::MaxTurns);
     }
 
     #[test]

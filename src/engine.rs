@@ -187,7 +187,12 @@ async fn handle_message(
             )
             .await?
     };
-    let request = build_user_request(&update.text, &saved_attachments);
+    let request = build_user_request(
+        &update.text,
+        &saved_attachments,
+        lane.mode,
+        &workspace.continue_prompt,
+    );
     let initial_outcome = if let Some(session_id) = lane.codex_session_id.as_deref() {
         codex.resume(workspace, session_id, request).await?
     } else {
@@ -451,7 +456,12 @@ fn format_status_message(
     )
 }
 
-fn build_user_request(text: &str, attachments: &[SavedTelegramAttachment]) -> CodexRequest {
+fn build_user_request(
+    text: &str,
+    attachments: &[SavedTelegramAttachment],
+    lane_mode: LaneMode,
+    continue_prompt: &str,
+) -> CodexRequest {
     let image_paths = attachments
         .iter()
         .filter(|attachment| attachment.attachment.kind == TelegramAttachmentKind::Photo)
@@ -475,6 +485,12 @@ fn build_user_request(text: &str, attachments: &[SavedTelegramAttachment]) -> Co
                 .collect::<Vec<_>>()
                 .join("\n")
         )
+    };
+
+    let prompt = if matches!(lane_mode, LaneMode::Infinite | LaneMode::MaxTurns) {
+        append_auto_continue_instruction(&prompt, continue_prompt)
+    } else {
+        prompt
     };
 
     if image_paths.is_empty() {
@@ -519,6 +535,12 @@ fn build_auto_continue_prompt(continue_prompt: &str) -> String {
     )
 }
 
+fn append_auto_continue_instruction(prompt: &str, continue_prompt: &str) -> String {
+    format!(
+        "{prompt}\n\n補足:\n- まだ続ける作業がある時だけ、そのまま続けてください。\n- 区切りがついたら `{AUTO_CONTINUE_STOP_MARKER}` とだけ返してください。\n- 次に進む時は次の方針を優先してください: {continue_prompt}"
+    )
+}
+
 fn sanitize_auto_continue_message(message: &str) -> String {
     if message.trim() == AUTO_CONTINUE_STOP_MARKER {
         String::new()
@@ -558,6 +580,7 @@ fn should_continue_automatically(
         || outcome.session_id.is_none()
         || outcome.last_message.trim().is_empty()
         || outcome.last_message.trim() == AUTO_CONTINUE_STOP_MARKER
+        || outcome.exit_code != Some(0)
     {
         return false;
     }
@@ -578,7 +601,8 @@ fn configured_extra_turn_budget(
     match mode {
         LaneMode::MaxTurns => requested_budget
             .filter(|value| *value > 0)
-            .unwrap_or(default_max_turns_limit),
+            .unwrap_or(default_max_turns_limit)
+            .min(default_max_turns_limit),
         LaneMode::AwaitReply | LaneMode::CompletionChecks | LaneMode::Infinite => 0,
     }
 }
@@ -715,11 +739,14 @@ mod tests {
                     "documents/report.pdf",
                 ),
             ],
+            LaneMode::MaxTurns,
+            "必要なら続けてください。",
         );
 
         assert_eq!(request.image_paths, vec![PathBuf::from("C:/tmp/photo.png")]);
         assert!(request.prompt.contains("確認してください。"));
         assert!(request.prompt.contains("C:/tmp/report.pdf"));
+        assert!(request.prompt.contains(AUTO_CONTINUE_STOP_MARKER));
     }
 
     #[test]
@@ -795,8 +822,8 @@ mod tests {
             .expect("lane lookup should succeed")
             .expect("lane should exist");
         assert_eq!(lane.mode, LaneMode::MaxTurns);
-        assert_eq!(lane.extra_turn_budget, 5);
-        assert!(reply.contains("追加ターン上限: 5"));
+        assert_eq!(lane.extra_turn_budget, 3);
+        assert!(reply.contains("追加ターン上限: 3"));
     }
 
     #[test]
@@ -805,7 +832,7 @@ mod tests {
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let workspace = test_workspace();
         let lane = store
-            .get_or_create_lane(20, "dm", &workspace.id, LaneMode::AwaitReply, 0)
+            .get_or_create_lane(20, "dm", &workspace.id, LaneMode::MaxTurns, 5)
             .expect("lane should be created");
         store
             .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
@@ -827,6 +854,7 @@ mod tests {
             .expect("lane should exist");
         assert_eq!(lane.state, LaneState::Idle);
         assert_eq!(lane.codex_session_id, None);
+        assert_eq!(lane.extra_turn_budget, 5);
         assert!(reply.contains("セッションを止めました"));
     }
 
@@ -872,6 +900,7 @@ mod tests {
     #[test]
     fn automatic_turn_limit_uses_default_for_zero_budget() {
         assert_eq!(automatic_turn_limit(LaneMode::MaxTurns, 0, 4), Some(4));
+        assert_eq!(automatic_turn_limit(LaneMode::MaxTurns, 8, 4), Some(4));
     }
 
     #[test]
@@ -906,6 +935,24 @@ mod tests {
             LaneMode::MaxTurns,
             Some(2),
             2,
+            &outcome,
+            None,
+        ));
+    }
+
+    #[test]
+    fn should_not_continue_automatically_after_non_zero_exit() {
+        let outcome = crate::codex::CodexOutcome {
+            session_id: Some("session-1".to_owned()),
+            last_message: "失敗しました".to_owned(),
+            exit_code: Some(1),
+            approval_pending: false,
+        };
+
+        assert!(!should_continue_automatically(
+            LaneMode::Infinite,
+            None,
+            0,
             &outcome,
             None,
         ));

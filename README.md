@@ -111,7 +111,7 @@ Important sections:
 - `codex`: CLI binary, model, sandbox, and approval mode
 - `storage`: SQLite path, temp path, and log path
 - `policy`: default lane behavior and output truncation
-- `policy.max_turns_limit`: default extra-turn cap for `max_turns`
+- `policy.max_turns_limit`: `max_turns` の既定値であり、指定できる上限
 - `checks`: named completion-check profiles
 - `workspaces`: workspace mapping and default continuation prompt
 
@@ -152,7 +152,7 @@ Example `max_turns` control command:
 /mode max_turns 3
 ```
 
-This keeps the lane in `waiting_reply` after up to three automatic continuation turns.
+This keeps the lane in `waiting_reply` after up to three automatic continuation turns. Larger values are clamped by `policy.max_turns_limit`.
 
 ## Secret Handling
 
