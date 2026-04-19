@@ -200,8 +200,9 @@ fn planning_paths_prefers_mainvault_over_duplicate_vault() -> Result<()> {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let resolved = String::from_utf8(output.stdout)?.trim().to_owned();
-    assert_eq!(resolved, canonical_root.display().to_string());
+    let resolved = fs::canonicalize(String::from_utf8(output.stdout)?.trim())?;
+    let expected = fs::canonicalize(&canonical_root)?;
+    assert_eq!(resolved, expected);
 
     Ok(())
 }
