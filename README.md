@@ -1,0 +1,113 @@
+# codex-channels
+
+Windows bridge that recreates Claude Code Channels style workflows with Codex and Telegram.
+
+## Status
+
+This repository is an early foundation build.
+
+Implemented today:
+
+- Rust project and workspace layout
+- Telegram long polling client
+- SQLite-backed lane and run state
+- `codex exec` and `codex exec resume` integration
+- DPAPI-backed local secret storage
+- Windows service entry point
+- GitHub Actions CI for `cargo fmt --check` and `cargo check`
+
+Not implemented yet:
+
+- `completion_checks`
+- attachment handling
+- progress message editing
+- production-grade service installation flow
+
+## Requirements
+
+- Windows
+- Rust toolchain
+- `codex` CLI on `PATH`
+- Telegram bot token
+
+## Quick Start
+
+1. Set the bot token in the local protected store:
+
+```powershell
+cargo run -- secret set codex-telegram-bot <YOUR_TELEGRAM_BOT_TOKEN>
+```
+
+2. Review and update [`bridge.toml`](bridge.toml).
+
+3. Run the bridge in console mode:
+
+```powershell
+cargo run
+```
+
+4. Verify formatting and build checks:
+
+```powershell
+cargo fmt --check
+cargo check
+```
+
+## Configuration
+
+The main local config file is [`bridge.toml`](bridge.toml).
+
+Important sections:
+
+- `service`: run mode and shutdown timing
+- `telegram`: allowed chat types and admin sender IDs
+- `codex`: CLI binary, model, sandbox, and approval mode
+- `storage`: SQLite path, temp path, and log path
+- `policy`: default lane behavior and output truncation
+- `workspaces`: workspace mapping and default continuation prompt
+
+## Secret Handling
+
+Local secrets are stored under `LOCALAPPDATA/codex-telegram-bridge/secrets` using DPAPI.
+
+Commands:
+
+```powershell
+cargo run -- secret set codex-telegram-bot <TOKEN>
+cargo run -- secret delete codex-telegram-bot
+```
+
+If no stored secret is found, the bridge falls back to `TELEGRAM_BOT_TOKEN`.
+
+## Git Safety
+
+- Internal handoff files are ignored by `.gitignore`
+- Runtime state is ignored by `.gitignore`
+- Git hooks and `git-guard` should remain enabled for commit and push protection
+
+## CI
+
+GitHub Actions runs:
+
+- `cargo fmt --check`
+- `cargo check`
+
+The `main` branch is protected and requires:
+
+- pull request based changes
+- one approval
+- resolved conversations
+- passing `ci`
+
+## Repository Layout
+
+```text
+src/main.rs            startup and CLI entry
+src/config.rs          config types and validation
+src/store.rs           SQLite persistence
+src/telegram.rs        Telegram Bot API client
+src/codex.rs           Codex CLI execution
+src/engine.rs          lane execution loop
+src/windows_secret.rs  DPAPI secret storage
+src/service.rs         Windows service host
+```
