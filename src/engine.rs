@@ -104,13 +104,14 @@ async fn handle_message(
     _sender_id: i64,
     update: IncomingMessage,
 ) -> Result<()> {
-    let workspace = config.default_workspace();
+    let existing_lane = store.find_lane(update.chat_id, &update.thread_key)?;
     if let Some(command) = update.control_command() {
         let reply = handle_control_command(
             store,
-            workspace,
+            config,
             update.chat_id,
             &update.thread_key,
+            existing_lane.as_ref(),
             command,
             config.policy.max_turns_limit,
         )?;
@@ -129,6 +130,7 @@ async fn handle_message(
         return Ok(());
     }
 
+    let workspace = resolve_workspace(config, existing_lane.as_ref())?;
     let lane = store.get_or_create_lane(
         update.chat_id,
         &update.thread_key,
@@ -260,26 +262,37 @@ async fn handle_message(
 
 fn handle_control_command(
     store: &Store,
-    workspace: &crate::config::WorkspaceConfig,
+    config: &Config,
     chat_id: i64,
     thread_key: &str,
+    lane: Option<&LaneRecord>,
     command: TelegramControlCommand,
     default_max_turns_limit: i64,
 ) -> Result<String> {
     match command {
         TelegramControlCommand::Help => Ok(format_help_message()),
         TelegramControlCommand::Status => Ok(format_status_message(
-            store.find_lane(chat_id, thread_key)?,
+            lane.cloned(),
             default_max_turns_limit,
         )),
         TelegramControlCommand::Stop => {
-            let Some(lane) = store.find_lane(chat_id, thread_key)? else {
+            let Some(lane) = lane else {
                 return Ok("停止する対象はありません。".to_owned());
             };
             store.clear_lane_session(&lane.lane_id)?;
             Ok("現在のセッションを止めました。次の入力は新しい開始として扱います。".to_owned())
         }
+        TelegramControlCommand::Workspace { workspace_id } => handle_workspace_command(
+            store,
+            config,
+            chat_id,
+            thread_key,
+            lane,
+            workspace_id.as_deref(),
+            default_max_turns_limit,
+        ),
         TelegramControlCommand::Mode { mode, max_turns } => {
+            let workspace = resolve_workspace(config, lane)?;
             let mode = parse_lane_mode_name(&mode)?;
             let extra_turn_budget =
                 configured_extra_turn_budget(mode, max_turns, default_max_turns_limit);
@@ -298,6 +311,57 @@ fn handle_control_command(
             ))
         }
     }
+}
+
+fn handle_workspace_command(
+    store: &Store,
+    config: &Config,
+    chat_id: i64,
+    thread_key: &str,
+    lane: Option<&LaneRecord>,
+    requested_workspace_id: Option<&str>,
+    default_max_turns_limit: i64,
+) -> Result<String> {
+    let current_workspace_id = lane
+        .map(|lane| lane.workspace_id.as_str())
+        .unwrap_or(config.default_workspace().id.as_str());
+
+    let Some(requested_workspace_id) = requested_workspace_id else {
+        return Ok(format_workspace_message(
+            current_workspace_id,
+            &config.workspaces,
+            default_max_turns_limit,
+            lane.map(|lane| lane.mode),
+            lane.map(|lane| lane.extra_turn_budget),
+        ));
+    };
+
+    let workspace = config.workspace(requested_workspace_id).ok_or_else(|| {
+        anyhow!("不明な workspace です。`/workspace` で利用可能な一覧を確認してください。")
+    })?;
+
+    if let Some(lane) = lane {
+        if lane.workspace_id == workspace.id {
+            return Ok(format!(
+                "この会話はすでに workspace `{}` を使っています。",
+                workspace.id
+            ));
+        }
+        store.update_lane_workspace(&lane.lane_id, &workspace.id)?;
+    } else {
+        store.get_or_create_lane(
+            chat_id,
+            thread_key,
+            &workspace.id,
+            workspace.default_mode,
+            configured_extra_turn_budget(workspace.default_mode, None, default_max_turns_limit),
+        )?;
+    }
+
+    Ok(format!(
+        "この会話の workspace を `{}` に更新しました。進行中のセッションはリセットしました。",
+        workspace.id
+    ))
 }
 
 fn truncate(text: &str, max_chars: usize) -> String {
@@ -440,6 +504,8 @@ fn format_help_message() -> String {
         "/help",
         "/status",
         "/stop",
+        "/workspace",
+        "/workspace <id>",
         "/mode await_reply",
         "/mode completion_checks",
         "/mode infinite",
@@ -467,12 +533,48 @@ fn format_status_message(
         default_max_turns_limit,
     );
     format!(
-        "状態: `{}`\nモード: `{}`\n{}\nセッション: {}",
+        "状態: `{}`\nworkspace: `{}`\nモード: `{}`\n{}\nセッション: {}",
         lane_state_name(lane.state),
+        lane.workspace_id,
         lane_mode_name(lane.mode),
         format_lane_mode_details(lane.mode, configured_budget),
         session
     )
+}
+
+fn format_workspace_message(
+    current_workspace_id: &str,
+    workspaces: &[crate::config::WorkspaceConfig],
+    default_max_turns_limit: i64,
+    lane_mode: Option<LaneMode>,
+    extra_turn_budget: Option<i64>,
+) -> String {
+    let mode = lane_mode.unwrap_or(workspaces[0].default_mode);
+    let configured_budget =
+        configured_extra_turn_budget(mode, extra_turn_budget, default_max_turns_limit);
+    format!(
+        "現在の workspace: `{}`\n利用可能:\n{}\n現在のモード: `{}`\n{}\n切り替え: `/workspace <id>`",
+        current_workspace_id,
+        workspaces
+            .iter()
+            .map(|workspace| format!("- `{}`", workspace.id))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        lane_mode_name(mode),
+        format_lane_mode_details(mode, configured_budget)
+    )
+}
+
+fn resolve_workspace<'a>(
+    config: &'a Config,
+    lane: Option<&LaneRecord>,
+) -> Result<&'a crate::config::WorkspaceConfig> {
+    let workspace_id = lane
+        .map(|lane| lane.workspace_id.as_str())
+        .unwrap_or(config.default_workspace().id.as_str());
+    config
+        .workspace(workspace_id)
+        .ok_or_else(|| anyhow!("workspace `{workspace_id}` が設定に見つかりません。"))
 }
 
 fn build_user_request(
@@ -803,13 +905,14 @@ mod tests {
     fn mode_command_updates_lane_mode() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
-        let workspace = test_workspace();
+        let config = test_config();
 
         let reply = handle_control_command(
             &store,
-            &workspace,
+            &config,
             10,
             "dm",
+            None,
             TelegramControlCommand::Mode {
                 mode: "completion_checks".to_owned(),
                 max_turns: None,
@@ -830,13 +933,14 @@ mod tests {
     fn mode_command_updates_max_turns_budget() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
-        let workspace = test_workspace();
+        let config = test_config();
 
         let reply = handle_control_command(
             &store,
-            &workspace,
+            &config,
             10,
             "dm",
+            None,
             TelegramControlCommand::Mode {
                 mode: "max_turns".to_owned(),
                 max_turns: Some(5),
@@ -858,7 +962,8 @@ mod tests {
     fn stop_command_clears_session() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
-        let workspace = test_workspace();
+        let config = test_config();
+        let workspace = config.default_workspace();
         let lane = store
             .get_or_create_lane(20, "dm", &workspace.id, LaneMode::MaxTurns, 5)
             .expect("lane should be created");
@@ -868,9 +973,10 @@ mod tests {
 
         let reply = handle_control_command(
             &store,
-            &workspace,
+            &config,
             20,
             "dm",
+            Some(&lane),
             TelegramControlCommand::Stop,
             3,
         )
@@ -884,6 +990,86 @@ mod tests {
         assert_eq!(lane.codex_session_id, None);
         assert_eq!(lane.extra_turn_budget, 5);
         assert!(reply.contains("セッションを止めました"));
+    }
+
+    #[test]
+    fn workspace_command_lists_current_and_available_workspaces() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let config = test_config();
+
+        let reply = handle_control_command(
+            &store,
+            &config,
+            10,
+            "dm",
+            None,
+            TelegramControlCommand::Workspace { workspace_id: None },
+            3,
+        )
+        .expect("workspace command should succeed");
+
+        assert!(reply.contains("現在の workspace: `main`"));
+        assert!(reply.contains("- `main`"));
+        assert!(reply.contains("- `docs`"));
+        assert!(reply.contains("/workspace <id>"));
+    }
+
+    #[test]
+    fn workspace_command_updates_lane_workspace_and_resets_session() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let config = test_config();
+        let lane = store
+            .get_or_create_lane(20, "dm", "main", LaneMode::MaxTurns, 2)
+            .expect("lane should be created");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
+            .expect("lane should update");
+        let lane = store
+            .find_lane(20, "dm")
+            .expect("lane lookup should succeed")
+            .expect("lane should exist");
+
+        let reply = handle_control_command(
+            &store,
+            &config,
+            20,
+            "dm",
+            Some(&lane),
+            TelegramControlCommand::Workspace {
+                workspace_id: Some("docs".to_owned()),
+            },
+            3,
+        )
+        .expect("workspace command should succeed");
+
+        let lane = store
+            .find_lane(20, "dm")
+            .expect("lane lookup should succeed")
+            .expect("lane should exist");
+        assert_eq!(lane.workspace_id, "docs");
+        assert_eq!(lane.state, LaneState::Idle);
+        assert_eq!(lane.codex_session_id, None);
+        assert!(reply.contains("workspace を `docs` に更新"));
+    }
+
+    #[test]
+    fn status_message_includes_workspace() {
+        let lane = LaneRecord {
+            lane_id: "lane-1".to_owned(),
+            chat_id: 1,
+            thread_key: "dm".to_owned(),
+            workspace_id: "docs".to_owned(),
+            mode: LaneMode::AwaitReply,
+            state: LaneState::WaitingReply,
+            codex_session_id: Some("session-1".to_owned()),
+            extra_turn_budget: 0,
+            waiting_since_ms: Some(1),
+        };
+
+        let message = format_status_message(Some(lane), 3);
+        assert!(message.contains("workspace: `docs`"));
     }
 
     fn saved_attachment(
@@ -914,14 +1100,53 @@ mod tests {
         }
     }
 
-    fn test_workspace() -> WorkspaceConfig {
+    fn test_workspace(id: &str, path: &str) -> WorkspaceConfig {
         WorkspaceConfig {
-            id: "main".to_owned(),
-            path: PathBuf::from("C:/workspace"),
-            writable_roots: vec![PathBuf::from("C:/workspace")],
+            id: id.to_owned(),
+            path: PathBuf::from(path),
+            writable_roots: vec![PathBuf::from(path)],
             default_mode: LaneMode::AwaitReply,
             continue_prompt: "continue".to_owned(),
             checks_profile: "default".to_owned(),
+        }
+    }
+
+    fn test_config() -> Config {
+        Config {
+            service: crate::config::ServiceConfig {
+                run_mode: crate::config::RunMode::Console,
+                poll_timeout_sec: 30,
+                shutdown_grace_sec: 15,
+            },
+            telegram: crate::config::TelegramConfig {
+                token_secret_ref: "token".to_owned(),
+                allowed_chat_types: vec!["private".to_owned()],
+                admin_sender_ids: vec![1],
+            },
+            codex: crate::config::CodexConfig {
+                binary: "codex".to_owned(),
+                model: "gpt-5.4".to_owned(),
+                sandbox: "workspace-write".to_owned(),
+                approval: "on-request".to_owned(),
+                profile: None,
+            },
+            storage: crate::config::StorageConfig {
+                db_path: PathBuf::from("bridge.db"),
+                state_dir: PathBuf::from("state"),
+                temp_dir: PathBuf::from("temp"),
+                log_dir: PathBuf::from("logs"),
+            },
+            policy: crate::config::PolicyConfig {
+                default_mode: LaneMode::AwaitReply,
+                progress_edit_interval_ms: 5000,
+                max_output_chars: 12000,
+                max_turns_limit: 3,
+            },
+            checks: crate::config::ChecksConfig::default(),
+            workspaces: vec![
+                test_workspace("main", "C:/workspace"),
+                test_workspace("docs", "C:/docs"),
+            ],
         }
     }
 

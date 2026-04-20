@@ -96,6 +96,8 @@ Telegram 側では次を使えます。
 /help
 /status                  # 今の状態を見る
 /stop                    # 動いている Codex を止める
+/workspace               # 現在の workspace と一覧を見る
+/workspace docs          # この会話の workspace を切り替える
 /mode completion_checks  # 確認に失敗した時だけ続ける
 /mode infinite           # Codex が自然に止まるまで続ける
 /mode max_turns 3        # 最大 3 回まで自動で続ける

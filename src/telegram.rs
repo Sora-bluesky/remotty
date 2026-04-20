@@ -31,6 +31,9 @@ pub enum TelegramControlCommand {
     Help,
     Status,
     Stop,
+    Workspace {
+        workspace_id: Option<String>,
+    },
     Mode {
         mode: String,
         max_turns: Option<i64>,
@@ -507,6 +510,15 @@ pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
             .next()
             .is_none()
             .then_some(TelegramControlCommand::Stop);
+    }
+    if command.eq_ignore_ascii_case("workspace") {
+        let workspace_id = parts.next().map(|value| value.trim().to_owned());
+        if parts.next().is_some() {
+            return None;
+        }
+        return Some(TelegramControlCommand::Workspace {
+            workspace_id: workspace_id.filter(|value| !value.is_empty()),
+        });
     }
     if command.eq_ignore_ascii_case("mode") {
         let mode = parts.next()?.trim().to_ascii_lowercase();
@@ -1020,6 +1032,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_workspace_command_without_argument() {
+        assert_eq!(
+            parse_control_command("/workspace"),
+            Some(TelegramControlCommand::Workspace { workspace_id: None })
+        );
+    }
+
+    #[test]
+    fn parses_workspace_command_with_id() {
+        assert_eq!(
+            parse_control_command("/workspace docs"),
+            Some(TelegramControlCommand::Workspace {
+                workspace_id: Some("docs".to_owned())
+            })
+        );
+    }
+
+    #[test]
     fn parses_stop_command() {
         assert_eq!(
             TelegramControlCommand::parse("/stop"),
@@ -1052,6 +1082,7 @@ mod tests {
         assert_eq!(parse_control_command("/help now"), None);
         assert_eq!(parse_control_command("/status now"), None);
         assert_eq!(parse_control_command("/stop now"), None);
+        assert_eq!(parse_control_command("/workspace docs extra"), None);
     }
 
     #[test]

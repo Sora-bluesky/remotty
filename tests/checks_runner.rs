@@ -291,6 +291,63 @@ checks_profile = "default"
     Ok(())
 }
 
+#[test]
+fn config_rejects_duplicate_workspace_ids() -> Result<()> {
+    let dir = tempdir()?;
+    let config_path = dir.path().join("bridge.toml");
+    fs::write(
+        &config_path,
+        r#"
+[service]
+run_mode = "console"
+poll_timeout_sec = 30
+shutdown_grace_sec = 15
+
+[telegram]
+token_secret_ref = "secret"
+allowed_chat_types = ["private"]
+admin_sender_ids = [1]
+
+[codex]
+binary = "codex"
+model = "gpt-5.4"
+sandbox = "workspace-write"
+approval = "on-request"
+
+[storage]
+db_path = "state/bridge.db"
+state_dir = "state"
+temp_dir = "state/tmp"
+log_dir = "state/logs"
+
+[policy]
+default_mode = "await_reply"
+progress_edit_interval_ms = 5000
+max_output_chars = 12000
+
+[[workspaces]]
+id = "main"
+path = "C:/workspace-a"
+writable_roots = ["C:/workspace-a"]
+default_mode = "await_reply"
+continue_prompt = "continue"
+checks_profile = "default"
+
+[[workspaces]]
+id = "main"
+path = "C:/workspace-b"
+writable_roots = ["C:/workspace-b"]
+default_mode = "await_reply"
+continue_prompt = "continue"
+checks_profile = "default"
+"#,
+    )?;
+
+    let error = Config::load(&config_path).expect_err("config should fail");
+    assert!(error.to_string().contains("duplicate workspace id"));
+    Ok(())
+}
+
 #[tokio::test]
 async fn run_profile_reports_success_after_all_commands_pass() -> Result<()> {
     let dir = tempdir()?;

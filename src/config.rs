@@ -149,7 +149,14 @@ impl Config {
         if self.workspaces.is_empty() {
             bail!("workspaces must not be empty");
         }
+        let mut seen_workspace_ids = std::collections::BTreeSet::new();
         for workspace in &self.workspaces {
+            if workspace.id.trim().is_empty() {
+                bail!("workspace id must not be empty");
+            }
+            if !seen_workspace_ids.insert(workspace.id.clone()) {
+                bail!("duplicate workspace id '{}'", workspace.id);
+            }
             if !self.checks.profiles.contains_key(&workspace.checks_profile) {
                 bail!(
                     "workspace '{}' references unknown checks profile '{}'",
@@ -190,5 +197,11 @@ impl Config {
 
     pub fn default_workspace(&self) -> &WorkspaceConfig {
         &self.workspaces[0]
+    }
+
+    pub fn workspace(&self, workspace_id: &str) -> Option<&WorkspaceConfig> {
+        self.workspaces
+            .iter()
+            .find(|workspace| workspace.id == workspace_id)
     }
 }

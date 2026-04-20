@@ -359,6 +359,23 @@ impl Store {
         Ok(())
     }
 
+    pub fn update_lane_workspace(&self, lane_id: &str, workspace_id: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE lanes
+                SET workspace_id = ?2,
+                    state = 'idle',
+                    codex_session_id = NULL,
+                    waiting_since_ms = NULL
+                WHERE lane_id = ?1
+                "#,
+                params![lane_id, workspace_id],
+            )
+        })?;
+        Ok(())
+    }
+
     pub fn insert_run(&self, new_run: NewRun) -> Result<RunRecord> {
         let run = RunRecord {
             run_id: Uuid::new_v4().to_string(),
@@ -566,5 +583,29 @@ mod tests {
             .expect("lane");
 
         assert_eq!(lane.extra_turn_budget, 4);
+    }
+
+    #[test]
+    fn update_lane_workspace_changes_workspace_and_clears_session() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(42, "555", "main", LaneMode::AwaitReply, 0)
+            .expect("lane");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::WaitingReply, Some("session-1"))
+            .expect("state update");
+
+        store
+            .update_lane_workspace(&lane.lane_id, "docs")
+            .expect("workspace update");
+
+        let lane = store
+            .find_lane(42, "555")
+            .expect("query")
+            .expect("lane exists");
+        assert_eq!(lane.workspace_id, "docs");
+        assert_eq!(lane.state, LaneState::Idle);
+        assert_eq!(lane.codex_session_id, None);
+        assert_eq!(lane.waiting_since_ms, None);
     }
 }

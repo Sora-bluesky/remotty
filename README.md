@@ -97,6 +97,8 @@ Inside Telegram, you can use:
 /help
 /status                  # show the current bridge state
 /stop                    # stop the active Codex session
+/workspace               # show the current workspace and available IDs
+/workspace docs          # switch this chat to another workspace
 /mode completion_checks  # continue only after local checks fail
 /mode infinite           # keep continuing until Codex stops naturally
 /mode max_turns 3        # continue automatically up to 3 times
