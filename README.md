@@ -1,73 +1,174 @@
+[English](README.md) | [日本語](README.ja.md)
+
 # codex-channels
 
-Windows bridge that recreates Claude Code Channels style workflows with Codex and Telegram.
+`codex-channels` is a Windows bridge that lets you talk to Codex from Telegram.
 
-## Status
+It runs on your Windows machine, receives messages from your Telegram bot, starts `codex`, and sends the result back to the same chat. The project is designed for people who want a simple chat-based control surface without exposing a public webhook server.
 
-This repository is an early foundation build.
+## What It Does
 
-Implemented today:
+- Connects a Telegram bot to a local Codex workflow
+- Keeps conversation state in SQLite so the bridge can resume work cleanly
+- Supports reply-driven work and automatic continuation modes
+- Stores bot tokens in local protected storage with DPAPI
+- Can run in the foreground or as a Windows service
 
-- Rust project and workspace layout
-- Telegram long polling client
-- SQLite-backed lane and run state
-- `codex exec` and `codex exec resume` integration
-- attachment parsing and safe local attachment storage
-- `completion_checks` execution and automatic repair retry flow
-- automatic continuation for `infinite` and `max_turns`
-- progress message editing in Telegram
-- Telegram control commands for `/help`, `/status`, `/stop`, and `/mode`
-- DPAPI-backed local secret storage
-- Windows service entry point
-- GitHub Actions CI for `cargo fmt --check` and `cargo check`
-- focused tests for checks, prompt shaping, and attachment helpers
+## Who It Is For
 
-Not implemented yet:
+This project is best for:
 
-- automated live end-to-end tests in `CI`
+- Windows users who want to trigger Codex from Telegram
+- solo builders who want a lightweight remote control surface
+- developers who prefer local execution over hosted automation
+
+Today, setup is still command-line based. If you are comfortable with PowerShell and basic Telegram bot setup, you should be able to get started.
 
 ## Requirements
 
-- Windows
-- Rust toolchain
-- `codex` CLI on `PATH`
-- Telegram bot token
+- Windows 10 or Windows 11
+- Rust toolchain from [rustup.rs](https://rustup.rs/) with `cargo` available on `PATH`
+- `codex` CLI available on `PATH`
+- a Telegram bot token from `@BotFather`
+- your Telegram user ID, so the bridge knows who is allowed to use it
 
 ## Quick Start
 
-1. Set the bot token in the local protected store:
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/Sora-bluesky/codex-channels.git
+cd codex-channels
+```
+
+### 2. Create a Telegram bot
+
+1. Open `@BotFather` in Telegram.
+2. Send `/newbot`.
+3. Choose a bot name and username.
+4. Copy the bot token that BotFather returns.
+
+### 3. Store the bot token locally
+
+This stores the token in Windows protected storage instead of a tracked file.
+The first `cargo run` may take a few minutes because it builds the project.
 
 ```powershell
 cargo run -- secret set codex-telegram-bot <YOUR_TELEGRAM_BOT_TOKEN>
 ```
 
-2. Review and update [`bridge.toml`](bridge.toml).
+### 4. Edit `bridge.toml`
 
-3. Run the bridge in console mode:
+The repository already includes `bridge.toml` as a starting point.
+
+Update these values before the first run:
+
+- `telegram.admin_sender_ids`: your Telegram user ID
+- `workspaces[0].path`: the folder where Codex should work
+- `workspaces[0].writable_roots`: folders Codex is allowed to edit
+
+If you do not know your Telegram user ID yet, send a message to your bot and inspect the latest `message.from.id` field with:
+
+```powershell
+Invoke-RestMethod "https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/getUpdates" | ConvertTo-Json -Depth 8
+```
+
+If you already use a named Codex profile, you can also set `codex.profile`. Otherwise, leave it out and the bridge will follow the local `codex` CLI default.
+
+### 5. Start the bridge
 
 ```powershell
 cargo run
 ```
 
-4. Verify formatting and build checks:
+If startup succeeds, leave the terminal window open.
 
-```powershell
-cargo fmt --check
-cargo check
-```
+### 6. Open your bot in Telegram
 
-5. Use Telegram commands inside the chat when needed:
+Send `/help` to the bot. If the bridge is running and your sender ID is allowed, you should see the available commands.
+
+## Common Commands
+
+Inside Telegram, you can use:
 
 ```text
 /help
-/status
-/stop
-/mode completion_checks
-/mode infinite
-/mode max_turns 3
+/status                  # show the current bridge state
+/stop                    # stop the active Codex session
+/mode completion_checks  # continue only after local checks fail
+/mode infinite           # keep continuing until Codex stops naturally
+/mode max_turns 3        # continue automatically up to 3 times
 ```
 
-6. Install the Windows service when you want background execution:
+## Configuration
+
+The main config file is `bridge.toml`.
+
+### Important sections
+
+- `service`: run mode and shutdown timing
+- `telegram`: allowed chat types and allowed senders
+- `codex`: CLI binary, model, sandbox mode, approval mode, and optional profile
+- `storage`: SQLite path, state directory, temp directory, and logs
+- `policy`: default lane mode and output limits
+- `checks`: optional post-run verification commands
+- `workspaces`: where Codex runs and what it may edit
+
+### Minimal example
+
+This example shows the keys most people change first. The included `bridge.toml` already contains the remaining defaults.
+
+```toml
+[service]
+run_mode = "console"
+poll_timeout_sec = 30
+shutdown_grace_sec = 15
+
+[telegram]
+token_secret_ref = "codex-telegram-bot"
+allowed_chat_types = ["private"]
+admin_sender_ids = [123456789]
+
+[codex]
+binary = "codex"
+model = "<your-codex-model>"
+sandbox = "workspace-write"
+approval = "on-request"
+
+[storage]
+db_path = "state/bridge.db"
+state_dir = "state"
+temp_dir = "state/tmp"
+log_dir = "state/logs"
+
+[policy]
+default_mode = "await_reply"
+progress_edit_interval_ms = 5000
+max_output_chars = 12000
+max_turns_limit = 3
+
+[[workspaces]]
+id = "main"
+path = "C:/path/to/workspace"
+writable_roots = ["C:/path/to/workspace"]
+default_mode = "await_reply"
+continue_prompt = "Continue if more work is needed."
+checks_profile = "default"
+```
+
+## Security
+
+- Bot tokens should stay in local protected storage or environment variables
+- You can use `TELEGRAM_BOT_TOKEN` as a fallback when you do not want to store the token with `cargo run -- secret set`
+- Do not commit live values such as `LIVE_TELEGRAM_BOT_TOKEN` or `LIVE_WORKSPACE`
+- Runtime state is ignored by `.gitignore`
+- Local secret-scanning hooks are recommended before commit and push
+
+## Run as a Windows Service
+
+If you want the bridge to keep running in the background:
+
+Open PowerShell as Administrator before the install step.
 
 ```powershell
 cargo run -- service install --config bridge.toml
@@ -75,117 +176,26 @@ cargo run -- service start
 cargo run -- service status
 ```
 
-Stop or remove it later:
+To stop or remove it later:
 
 ```powershell
 cargo run -- service stop
 cargo run -- service uninstall
 ```
 
-7. Sync the external roadmap view when backlog changes:
+## For Contributors
+
+### Checks
 
 ```powershell
-pwsh -NoProfile -File scripts/sync-roadmap.ps1
+cargo fmt --check
+cargo test
+cargo check
 ```
 
-8. Validate planning inputs before syncing:
+### Optional live smoke test
 
-```powershell
-pwsh -NoProfile -File scripts/validate-planning.ps1
-```
-
-9. Initialize the external planning workspace in one step:
-
-```powershell
-pwsh -NoProfile -File scripts/setup-planning.ps1
-```
-
-## Configuration
-
-The main local config file is [`bridge.toml`](bridge.toml).
-
-Important sections:
-
-- `service`: run mode and shutdown timing
-- `telegram`: allowed chat types and admin sender IDs
-- `codex`: CLI binary, model, sandbox, and approval mode
-- `codex.profile`: omit by default; omission delegates profile selection to the local `codex` CLI
-- `storage`: SQLite path, temp path, and log path
-- `policy`: default lane behavior and output truncation
-- `policy.max_turns_limit`: `max_turns` の既定値であり、指定できる上限
-- `checks`: named completion-check profiles
-- `workspaces`: workspace mapping and default continuation prompt
-
-Example `completion_checks` profile:
-
-```toml
-[policy]
-default_mode = "completion_checks"
-progress_edit_interval_ms = 5000
-max_output_chars = 12000
-max_turns_limit = 3
-
-[checks.profiles.default]
-[[checks.profiles.default.commands]]
-name = "fmt"
-program = "cargo"
-args = ["fmt", "--check"]
-timeout_sec = 30
-
-[[checks.profiles.default.commands]]
-name = "test"
-program = "cargo"
-args = ["test"]
-timeout_sec = 180
-
-[[workspaces]]
-id = "main"
-path = "C:/path/to/workspace"
-writable_roots = ["C:/path/to/workspace"]
-default_mode = "completion_checks"
-continue_prompt = "失敗した確認を直し、必要ならテストを追加して続けてください。"
-checks_profile = "default"
-```
-
-Example `max_turns` control command:
-
-```text
-/mode max_turns 3
-```
-
-This keeps the lane in `waiting_reply` after up to three automatic continuation turns. Larger values are clamped by `policy.max_turns_limit`.
-
-## Secret Handling
-
-Local secrets are stored under `LOCALAPPDATA/codex-telegram-bridge/secrets` using DPAPI.
-
-Commands:
-
-```powershell
-cargo run -- secret set codex-telegram-bot <TOKEN>
-cargo run -- secret delete codex-telegram-bot
-```
-
-If no stored secret is found, the bridge falls back to `TELEGRAM_BOT_TOKEN`.
-
-## Git Safety
-
-- Internal handoff files are ignored by `.gitignore`
-- Runtime state is ignored by `.gitignore`
-- Git hooks and `git-guard` should remain enabled for commit and push protection
-
-## CI
-
-GitHub Actions runs:
-
-- `cargo fmt --check`
-- `cargo check`
-- `cargo test`
-- `pwsh -NoProfile -File scripts/audit-public-surface.ps1`
-
-## Live E2E
-
-Live end-to-end smoke runs are opt-in only. They do not run in the default `cargo test` path or in `CI`.
+The live smoke test is opt-in and does not run in CI.
 
 Required environment variables:
 
@@ -200,51 +210,26 @@ Optional environment variables:
 - `LIVE_CODEX_PROFILE`
 - `LIVE_TIMEOUT_SEC`
 
-The live smoke omits `codex.profile` by default and therefore follows the local `codex` CLI default. If you use a named profile, set `LIVE_CODEX_PROFILE` or add `codex.profile` to your own `bridge.toml`.
-
-Run command:
+Run:
 
 ```powershell
 cargo test --features live-e2e --test live_end_to_end -- --ignored --nocapture
 ```
 
-Use a dedicated test bot and chat when possible. The test clears pending updates before startup, sends instructions to that chat, then waits for you to reply to the bot with the exact one-line prompt shown in Telegram.
-
-The `main` branch is protected and requires:
-
-- pull request based changes
-- resolved conversations
-- passing `ci`
-
-## Planning
-
-Maintainer planning files live outside the repository, following the same pattern as `winsmux`.
-
-- `scripts/sync-roadmap.ps1` reads `backlog.yaml` and writes `ROADMAP.md`
-- `scripts/validate-planning.ps1` checks `backlog.yaml` and `roadmap-title-ja.psd1` before sync
-- `scripts/setup-planning.ps1` creates the external planning root, writes the marker, copies examples, and runs the first sync
-- `scripts/planning-paths.ps1` resolves the planning root from `CODEX_CHANNELS_PLANNING_ROOT` or `%LOCALAPPDATA%\\codex-channels\\planning-root.txt`
-- tracked files under `tasks/` are example-only bootstrap files
-
-Files resolved by the planning root:
-
-- `backlog.yaml`
-- `ROADMAP.md`
-- `roadmap-title-ja.psd1`
+Use a dedicated test bot and chat when possible.
 
 ## Repository Layout
 
 ```text
-src/main.rs            startup and CLI entry
-src/cli.rs             CLI parsing for secrets and service control
-src/config.rs          config types and validation
-src/checks.rs          completion-check runner
-src/store.rs           SQLite persistence
-src/telegram.rs        Telegram Bot API client
-src/codex.rs           Codex CLI execution
-src/engine.rs          lane execution loop
-src/windows_secret.rs  DPAPI secret storage
-src/service.rs         Windows service host
-tests/checks_runner.rs completion-check tests
-tests/roadmap_sync.rs  roadmap sync tests
+codex-channels/
+├── src/                    # bridge runtime, Telegram client, Codex runner
+├── tests/                  # config, smoke, and safety tests
+├── scripts/                # maintenance and validation scripts
+├── bridge.toml             # local configuration starter
+├── README.md               # English README
+└── README.ja.md            # Japanese README
 ```
+
+## License
+
+[MIT](LICENSE)
