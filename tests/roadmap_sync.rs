@@ -21,6 +21,21 @@ fn write_file(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
+fn normalize_roadmap_timestamp(content: &str) -> String {
+    content
+        .replace("\r\n", "\n")
+        .lines()
+        .map(|line| {
+            if line.starts_with("> 最終同期: ") {
+                String::from("> 最終同期: YYYY-MM-DD HH:mm (+09:00)")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn run_validate_planning(backlog_path: &Path, title_path: &Path) -> Result<std::process::Output> {
     Command::new(powershell())
         .arg("-NoProfile")
@@ -43,7 +58,7 @@ fn sync_roadmap_generates_grouped_japanese_view() -> Result<()> {
 
     write_file(
         &backlog_path,
-        r#"# === v0.1.0: Bootstrap ===
+        r#"# === v0.1.0: Bootstrap foundation ===
 - id: TASK-001
     title: Create bridge foundation
     status: done
@@ -51,19 +66,20 @@ fn sync_roadmap_generates_grouped_japanese_view() -> Result<()> {
     target_version: v0.1.0
     repo: codex-channels
 
+# === v0.1.1: Service commands ===
 - id: TASK-002
     title: Add Windows service management commands
     status: active
     priority: P1
-    target_version: v0.1.0
+    target_version: v0.1.1
     repo: codex-channels
 
-# === v0.2.0: Next capabilities ===
+# === v0.1.2: Completion checks ===
 - id: TASK-003
     title: Implement completion checks follow-up flow
     status: backlog
     priority: P0
-    target_version: v0.2.0
+    target_version: v0.1.2
     repo: codex-channels
 "#,
     )?;
@@ -73,6 +89,8 @@ fn sync_roadmap_generates_grouped_japanese_view() -> Result<()> {
         r#"@{
     VersionTitles = @{
         "v0.1.0" = "基盤の立ち上げ"
+        "v0.1.1" = "サービス運用の追加"
+        "v0.1.2" = "確認フローの追加"
     }
     TaskTitles = @{
         "TASK-002" = "Windows サービス管理コマンドを追加"
@@ -102,9 +120,18 @@ fn sync_roadmap_generates_grouped_japanese_view() -> Result<()> {
     let roadmap = fs::read_to_string(&roadmap_path)?;
     assert!(roadmap.contains("# ロードマップ"));
     assert!(roadmap.contains("### v0.1.0: 基盤の立ち上げ"));
-    assert!(roadmap.contains("| v0.1.0 | 2 |"));
+    assert!(roadmap.contains("### v0.1.1: サービス運用の追加"));
+    assert!(roadmap.contains("### v0.1.2: 確認フローの追加"));
+    assert!(roadmap.contains("| v0.1.0 | 1 |"));
+    assert!(roadmap.contains("| v0.1.1 | 1 |"));
+    assert!(roadmap.contains("| v0.1.2 | 1 |"));
     assert!(roadmap.contains("Windows サービス管理コマンドを追加"));
     assert!(roadmap.contains("completion checks follow-up flow を実装"));
+    let foundation_index = roadmap.find("### v0.1.0: 基盤の立ち上げ").unwrap();
+    let service_index = roadmap.find("### v0.1.1: サービス運用の追加").unwrap();
+    let checks_index = roadmap.find("### v0.1.2: 確認フローの追加").unwrap();
+    assert!(foundation_index < service_index);
+    assert!(service_index < checks_index);
     assert!(
         roadmap.contains("[====================] 100% (1/1)") || roadmap.contains("[==========")
     );
@@ -329,11 +356,11 @@ fn validate_planning_accepts_well_formed_inputs() -> Result<()> {
 
     write_file(
         &backlog_path,
-        "# === v0.1.0: Bootstrap ===\n- id: TASK-001\n    title: Create bridge foundation\n    status: done\n    priority: P0\n    target_version: v0.1.0\n    repo: codex-channels\n",
+        "# === v0.1.1: Bootstrap patch ===\n- id: TASK-001\n    title: Create bridge foundation\n    status: done\n    priority: P0\n    target_version: v0.1.1\n    repo: codex-channels\n",
     )?;
     write_file(
         &title_path,
-        "@{\n    VersionTitles = @{ \"v0.1.0\" = \"基盤\" }\n    TaskTitles = @{ \"TASK-001\" = \"ブリッジ基盤を作成\" }\n}\n",
+        "@{\n    VersionTitles = @{ \"v0.1.1\" = \"基盤\" }\n    TaskTitles = @{ \"TASK-001\" = \"ブリッジ基盤を作成\" }\n}\n",
     )?;
 
     let output = run_validate_planning(&backlog_path, &title_path)?;
@@ -342,6 +369,59 @@ fn validate_planning_accepts_well_formed_inputs() -> Result<()> {
         "validate-planning failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    Ok(())
+}
+
+#[test]
+fn validate_example_planning_files_pass() -> Result<()> {
+    let backlog_path = repo_root().join("tasks").join("backlog.example.yaml");
+    let title_path = repo_root()
+        .join("tasks")
+        .join("roadmap-title-ja.example.psd1");
+
+    let output = run_validate_planning(&backlog_path, &title_path)?;
+    assert!(
+        output.status.success(),
+        "validate-planning failed for example files: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Ok(())
+}
+
+#[test]
+fn roadmap_example_matches_generated_output() -> Result<()> {
+    let temp = TempDir::new()?;
+    let roadmap_path = temp.path().join("ROADMAP.md");
+    let backlog_path = repo_root().join("tasks").join("backlog.example.yaml");
+    let title_path = repo_root()
+        .join("tasks")
+        .join("roadmap-title-ja.example.psd1");
+    let expected_path = repo_root().join("tasks").join("ROADMAP.example.md");
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(repo_root().join("scripts").join("sync-roadmap.ps1"))
+        .arg("-BacklogPath")
+        .arg(&backlog_path)
+        .arg("-RoadmapPath")
+        .arg(&roadmap_path)
+        .arg("-RoadmapTitleJaPath")
+        .arg(&title_path)
+        .output()
+        .context("failed to run sync-roadmap.ps1 for example output")?;
+
+    assert!(
+        output.status.success(),
+        "sync-roadmap failed for example output: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let generated = normalize_roadmap_timestamp(&fs::read_to_string(&roadmap_path)?);
+    let expected = normalize_roadmap_timestamp(&fs::read_to_string(&expected_path)?);
+    assert_eq!(generated, expected);
 
     Ok(())
 }
