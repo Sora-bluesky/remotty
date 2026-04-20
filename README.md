@@ -6,8 +6,6 @@
 
 It runs on your Windows machine, receives messages from your Telegram bot, starts `codex`, and sends the result back to the same chat. The project is designed for people who want a simple chat-based control surface without exposing a public webhook server.
 
-![Overview](docs/readme-overview.svg)
-
 Send a message on Telegram, let your Windows PC run `codex`, and get the reply back in the same chat.
 
 ## What It Does

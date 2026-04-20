@@ -6,8 +6,6 @@
 
 スマホの Telegram で bot に指示を送ると、手元の Windows PC で `codex` が動き、結果が同じチャットへ返ります。公開サーバや webhook は不要で、bot token と会話履歴は PC 側で扱います。
 
-![概要図](docs/readme-overview.svg)
-
 Telegram から指示を送り、手元の Windows PC で `codex` を動かし、結果を同じチャットに返します。
 
 ## できること
