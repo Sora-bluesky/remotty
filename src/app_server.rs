@@ -614,12 +614,45 @@ fn summarize_permissions_approval(params: &Value) -> String {
 }
 
 fn summarize_tool_user_input(params: &Value) -> String {
-    let count = params
+    let questions = params
         .get("questions")
         .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    format!("追加の入力待ち: 質問数 {count}")
+        .cloned()
+        .unwrap_or_default();
+    if questions.is_empty() {
+        return "追加の入力待ち".to_owned();
+    }
+
+    let mut lines = vec![format!("追加の入力待ち: 質問数 {}", questions.len())];
+    for (index, question) in questions.iter().take(3).enumerate() {
+        let option_count = question
+            .get("options")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        if option_count == 0 {
+            lines.push(format!("{}. 追加入力あり", index + 1));
+            continue;
+        }
+
+        lines.push(format!("{}. 選択肢 {} 件", index + 1, option_count));
+    }
+    summarize_multiline_text(&lines.join("\n"), 320)
+}
+
+fn summarize_multiline_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_owned();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let prefix = text
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    format!("{prefix}…")
 }
 
 fn required_param_str<'a>(params: &'a Value, key: &str) -> Result<&'a str> {
@@ -740,6 +773,63 @@ mod tests {
         );
         assert_eq!(request.transport_request_id, "req-2");
         assert!(request.summary_text.contains("network access required"));
+    }
+
+    #[test]
+    fn parses_tool_user_input_request_with_safe_summary() {
+        let request = parse_approval_request(&json!({
+            "id": "req-3",
+            "method": "item/tool/requestUserInput",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "questions": [
+                    {
+                        "question": "Approve app tool call?",
+                        "options": [
+                            { "label": "Allow once" },
+                            { "label": "Allow for session" },
+                            { "label": "Decline" }
+                        ]
+                    },
+                    {
+                        "question": "Remember this choice?",
+                        "options": [
+                            { "label": "Yes" },
+                            { "label": "No" }
+                        ]
+                    }
+                ]
+            }
+        }))
+        .expect("approval should parse")
+        .expect("approval should exist");
+
+        assert_eq!(request.request_kind, ApprovalRequestKind::ToolUserInput);
+        assert!(request.summary_text.contains("追加の入力待ち: 質問数 2"));
+        assert!(request.summary_text.contains("1. 選択肢 3 件"));
+        assert!(request.summary_text.contains("2. 選択肢 2 件"));
+        assert!(!request.summary_text.contains("Approve app tool call?"));
+        assert!(!request.summary_text.contains("Allow once"));
+        assert!(!request.summary_text.contains("Remember this choice?"));
+        assert!(!request.summary_text.contains("Yes"));
+    }
+
+    #[test]
+    fn summarize_multiline_text_keeps_exact_limit_without_ellipsis() {
+        let exact = "x".repeat(320);
+
+        assert_eq!(summarize_multiline_text(&exact, 320), exact);
+    }
+
+    #[test]
+    fn summarize_multiline_text_truncates_to_total_limit() {
+        let over_limit = "x".repeat(321);
+        let summary = summarize_multiline_text(&over_limit, 320);
+
+        assert_eq!(summary.chars().count(), 320);
+        assert!(summary.ends_with('…'));
     }
 
     #[test]
