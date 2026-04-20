@@ -72,5 +72,32 @@
                 "Rounded out the operator command set for day-to-day bridge operation."
             )
         }
+        @{
+            Version = "0.1.8"
+            Commit = "4575d0c053b4f2aa88030d9430abf2644077b2a0"
+            Title = "Release automation"
+            Notes = @(
+                "Added scripted version bumps, release note generation, and historical release backfill."
+                "Published Windows x64 and arm64 binaries through tag-driven GitHub Actions releases."
+            )
+        }
+        @{
+            Version = "0.1.9"
+            Commit = "051981b0db4c71b8141c9b0099316985cdd09a70"
+            Title = "Approval notification foundation"
+            Notes = @(
+                "Added the `app_server` transport and approval request storage for Telegram-driven approval loops."
+                "Sent pending approvals to Telegram and added the first live approval end-to-end harness."
+            )
+        }
+        @{
+            Version = "0.1.10"
+            Commit = "333c8530f736f70eef084ba4950580fbce5c23cc"
+            Title = "Telegram approval actions"
+            Notes = @(
+                "Added Telegram-side approve and deny actions, callback handling, and approval resume flow."
+                "Hardened approval state recovery, persistence, and operator-facing status updates."
+            )
+        }
     )
 }
