@@ -65,7 +65,47 @@
 # === v0.1.8: Release automation ===
 - id: TASK-009
     title: Add release automation and publish historical versions
-    status: active
+    status: done
     priority: P0
     target_version: v0.1.8
+    repo: codex-channels
+
+# === v0.1.9: Approval notification ===
+- id: TASK-010
+    title: Send Telegram approval requests for pending Codex actions
+    status: active
+    priority: P0
+    target_version: v0.1.9
+    repo: codex-channels
+
+# === v0.1.10: Approval actions ===
+- id: TASK-011
+    title: Add Telegram approve and deny actions
+    status: backlog
+    priority: P0
+    target_version: v0.1.10
+    repo: codex-channels
+
+# === v0.1.11: Approval resume ===
+- id: TASK-012
+    title: Persist approval decisions and resume Codex safely
+    status: backlog
+    priority: P0
+    target_version: v0.1.11
+    repo: codex-channels
+
+# === v0.1.12: Approval hardening ===
+- id: TASK-013
+    title: Harden Telegram approval UX and edge cases
+    status: backlog
+    priority: P1
+    target_version: v0.1.12
+    repo: codex-channels
+
+# === v0.1.13: Approval E2E ===
+- id: TASK-014
+    title: Run live end-to-end approval flow on Telegram and Codex
+    status: backlog
+    priority: P1
+    target_version: v0.1.13
     repo: codex-channels
