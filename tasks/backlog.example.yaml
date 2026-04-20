@@ -1,4 +1,4 @@
-# === v0.1.0: Bootstrap ===
+# === v0.1.0: Foundation ===
 - id: TASK-001
     title: Create bridge foundation
     status: done
@@ -6,17 +6,58 @@
     target_version: v0.1.0
     repo: codex-channels
 
+# === v0.1.1: Service commands ===
 - id: TASK-002
     title: Add Windows service management commands
-    status: active
-    priority: P1
-    target_version: v0.1.0
+    status: done
+    priority: P0
+    target_version: v0.1.1
     repo: codex-channels
 
-# === v0.2.0: Next capabilities ===
+# === v0.1.2: Completion checks ===
 - id: TASK-003
     title: Implement completion checks follow-up flow
+    status: done
+    priority: P0
+    target_version: v0.1.2
+    repo: codex-channels
+
+# === v0.1.3: Attachments and progress ===
+- id: TASK-004
+    title: Add Telegram attachments and progress updates
+    status: done
+    priority: P1
+    target_version: v0.1.3
+    repo: codex-channels
+
+# === v0.1.4: Planning bootstrap ===
+- id: TASK-005
+    title: Add planning bootstrap and roadmap sync
+    status: done
+    priority: P1
+    target_version: v0.1.4
+    repo: codex-channels
+
+# === v0.1.5: Planning guardrails ===
+- id: TASK-006
+    title: Validate planning inputs and guard public files
+    status: done
+    priority: P1
+    target_version: v0.1.5
+    repo: codex-channels
+
+# === v0.1.6: Workspace switching ===
+- id: TASK-007
+    title: Add per-chat workspace switching
+    status: done
+    priority: P1
+    target_version: v0.1.6
+    repo: codex-channels
+
+# === v0.1.7: Live smoke ===
+- id: TASK-008
+    title: Add live end-to-end smoke coverage
     status: backlog
     priority: P0
-    target_version: v0.2.0
+    target_version: v0.1.7
     repo: codex-channels
