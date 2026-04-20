@@ -47,7 +47,8 @@ pub struct CodexConfig {
     pub model: String,
     pub sandbox: String,
     pub approval: String,
-    pub profile: String,
+    #[serde(default)]
+    pub profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -139,6 +140,11 @@ impl Config {
     fn validate(&self) -> Result<()> {
         if self.telegram.admin_sender_ids.is_empty() {
             bail!("telegram.admin_sender_ids must not be empty");
+        }
+        if let Some(profile) = self.codex.profile.as_deref() {
+            if profile.trim().is_empty() {
+                bail!("codex.profile must not be blank");
+            }
         }
         if self.workspaces.is_empty() {
             bail!("workspaces must not be empty");

@@ -109,6 +109,7 @@ Important sections:
 - `service`: run mode and shutdown timing
 - `telegram`: allowed chat types and admin sender IDs
 - `codex`: CLI binary, model, sandbox, and approval mode
+- `codex.profile`: omit by default; omission delegates profile selection to the local `codex` CLI
 - `storage`: SQLite path, temp path, and log path
 - `policy`: default lane behavior and output truncation
 - `policy.max_turns_limit`: `max_turns` の既定値であり、指定できる上限
@@ -196,7 +197,10 @@ Required environment variables:
 Optional environment variables:
 
 - `LIVE_CODEX_BIN`
+- `LIVE_CODEX_PROFILE`
 - `LIVE_TIMEOUT_SEC`
+
+The live smoke omits `codex.profile` by default and therefore follows the local `codex` CLI default. If you use a named profile, set `LIVE_CODEX_PROFILE` or add `codex.profile` to your own `bridge.toml`.
 
 Run command:
 

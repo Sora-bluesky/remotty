@@ -106,7 +106,7 @@ impl CodexRunner {
     }
 
     fn base_args(&self, workspace: &WorkspaceConfig) -> Vec<String> {
-        vec![
+        let mut args = vec![
             "exec".to_owned(),
             "--json".to_owned(),
             "--skip-git-repo-check".to_owned(),
@@ -114,13 +114,22 @@ impl CodexRunner {
             self.config.sandbox.clone(),
             "--model".to_owned(),
             self.config.model.clone(),
-            "--profile".to_owned(),
-            self.config.profile.clone(),
             "--config".to_owned(),
             format!("approval_policy=\"{}\"", self.config.approval),
             "--cd".to_owned(),
             workspace.path.display().to_string(),
-        ]
+        ];
+        if let Some(profile) = self
+            .config
+            .profile
+            .as_deref()
+            .map(str::trim)
+            .filter(|profile| !profile.is_empty())
+        {
+            args.push("--profile".to_owned());
+            args.push(profile.to_owned());
+        }
+        args
     }
 
     async fn run_command(&self, args: Vec<String>, cwd: &std::path::Path) -> Result<CodexOutcome> {
@@ -202,8 +211,10 @@ impl CodexRunner {
 
 #[cfg(test)]
 mod tests {
-    use super::CodexRequest;
+    use super::{CodexRequest, CodexRunner};
     use std::path::PathBuf;
+
+    use crate::config::{CodexConfig, LaneMode, WorkspaceConfig};
 
     #[test]
     fn request_without_images_keeps_prompt_only() {
@@ -233,5 +244,50 @@ mod tests {
                 "C:/tmp/two.png".to_owned(),
             ]
         );
+    }
+
+    #[test]
+    fn base_args_omit_profile_when_not_configured() {
+        let runner = CodexRunner::new(CodexConfig {
+            binary: "codex".to_owned(),
+            model: "gpt-5.4".to_owned(),
+            sandbox: "read-only".to_owned(),
+            approval: "never".to_owned(),
+            profile: None,
+        });
+
+        let args = runner.base_args(&workspace());
+
+        assert!(!args.iter().any(|arg| arg == "--profile"));
+    }
+
+    #[test]
+    fn base_args_include_profile_when_configured() {
+        let runner = CodexRunner::new(CodexConfig {
+            binary: "codex".to_owned(),
+            model: "gpt-5.4".to_owned(),
+            sandbox: "read-only".to_owned(),
+            approval: "never".to_owned(),
+            profile: Some("work".to_owned()),
+        });
+
+        let args = runner.base_args(&workspace());
+        let profile_index = args
+            .iter()
+            .position(|arg| arg == "--profile")
+            .expect("missing --profile");
+
+        assert_eq!(args.get(profile_index + 1), Some(&"work".to_owned()));
+    }
+
+    fn workspace() -> WorkspaceConfig {
+        WorkspaceConfig {
+            id: "main".to_owned(),
+            path: PathBuf::from("C:/workspace"),
+            writable_roots: vec![PathBuf::from("C:/workspace")],
+            default_mode: LaneMode::AwaitReply,
+            continue_prompt: "continue".to_owned(),
+            checks_profile: "default".to_owned(),
+        }
     }
 }

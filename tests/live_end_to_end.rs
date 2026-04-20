@@ -57,6 +57,7 @@ struct LiveEnv {
     sender_id: i64,
     workspace: PathBuf,
     codex_bin: String,
+    codex_profile: Option<String>,
     timeout_sec: u64,
 }
 
@@ -72,6 +73,10 @@ impl LiveEnv {
                 .context("LIVE_TELEGRAM_SENDER_ID must be an integer")?,
             workspace: PathBuf::from(required_env("LIVE_WORKSPACE")?),
             codex_bin: env::var("LIVE_CODEX_BIN").unwrap_or_else(|_| "codex".to_owned()),
+            codex_profile: env::var("LIVE_CODEX_PROFILE")
+                .ok()
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty()),
             timeout_sec: env::var("LIVE_TIMEOUT_SEC")
                 .ok()
                 .and_then(|value| value.parse().ok())
@@ -95,6 +100,11 @@ fn write_live_config(root: &Path, live: &LiveEnv) -> Result<PathBuf> {
     fs::create_dir_all(&temp_dir)?;
     fs::create_dir_all(&log_dir)?;
     let config_path = root.join("bridge.toml");
+    let profile_line = live
+        .codex_profile
+        .as_deref()
+        .map(|profile| format!("profile = {}\n", toml_string(profile)))
+        .unwrap_or_default();
     let config = format!(
         r#"[service]
 run_mode = "console"
@@ -111,7 +121,7 @@ binary = {codex_bin}
 model = "gpt-5.4"
 sandbox = "read-only"
 approval = "never"
-profile = "default"
+{profile_line}
 
 [storage]
 db_path = {db_path}
@@ -135,6 +145,7 @@ checks_profile = "default"
 "#,
         sender_id = live.sender_id,
         codex_bin = toml_string(&live.codex_bin),
+        profile_line = profile_line,
         db_path = toml_string(&state_dir.join("bridge.db").display().to_string()),
         state_dir = toml_string(&state_dir.display().to_string()),
         temp_dir = toml_string(&temp_dir.display().to_string()),
