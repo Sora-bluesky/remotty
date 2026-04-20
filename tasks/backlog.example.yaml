@@ -6,58 +6,66 @@
     target_version: v0.1.0
     repo: codex-channels
 
-# === v0.1.1: Service commands ===
+# === v0.1.1: Follow-up checks ===
 - id: TASK-002
-    title: Add Windows service management commands
+    title: Add completion checks and attachments
     status: done
     priority: P0
     target_version: v0.1.1
     repo: codex-channels
 
-# === v0.1.2: Completion checks ===
+# === v0.1.2: Operator controls ===
 - id: TASK-003
-    title: Implement completion checks follow-up flow
+    title: Add Telegram control commands and service management
     status: done
     priority: P0
     target_version: v0.1.2
     repo: codex-channels
 
-# === v0.1.3: Attachments and progress ===
+# === v0.1.3: Planning bootstrap ===
 - id: TASK-004
-    title: Add Telegram attachments and progress updates
+    title: Add planning bootstrap and public surface guard
     status: done
     priority: P1
     target_version: v0.1.3
     repo: codex-channels
 
-# === v0.1.4: Planning bootstrap ===
+# === v0.1.4: Planning hardening ===
 - id: TASK-005
-    title: Add planning bootstrap and roadmap sync
+    title: Harden planning validation and root discovery
     status: done
     priority: P1
     target_version: v0.1.4
     repo: codex-channels
 
-# === v0.1.5: Planning guardrails ===
+# === v0.1.5: Automatic turns ===
 - id: TASK-006
-    title: Validate planning inputs and guard public files
+    title: Add automatic turn modes
     status: done
     priority: P1
     target_version: v0.1.5
     repo: codex-channels
 
-# === v0.1.6: Workspace switching ===
+# === v0.1.6: Live smoke ===
 - id: TASK-007
-    title: Add per-chat workspace switching
+    title: Add live smoke coverage and optional Codex profile
     status: done
     priority: P1
     target_version: v0.1.6
     repo: codex-channels
 
-# === v0.1.7: Live smoke ===
+# === v0.1.7: Workspace switching ===
 - id: TASK-008
-    title: Add live end-to-end smoke coverage
-    status: backlog
+    title: Add per-chat workspace switching
+    status: done
     priority: P0
     target_version: v0.1.7
+    repo: codex-channels
+
+# === v0.1.8: Release automation ===
+- id: TASK-009
+    title: Add release automation and publish historical versions
+    status: active
+    priority: P0
+    target_version: v0.1.8
     repo: codex-channels

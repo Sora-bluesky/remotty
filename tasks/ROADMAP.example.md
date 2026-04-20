@@ -14,7 +14,8 @@
 | v0.1.4 | 1 | [====================] 100% (1/1) |
 | v0.1.5 | 1 | [====================] 100% (1/1) |
 | v0.1.6 | 1 | [====================] 100% (1/1) |
-| v0.1.7 | 1 | [--------------------] 0% (0/1) |
+| v0.1.7 | 1 | [====================] 100% (1/1) |
+| v0.1.8 | 1 | [--------------------] 0% (0/1) |
 
 ## タスク詳細
 
@@ -24,47 +25,53 @@
 |-|-----|-------|----------|------|--------|
 | [x] | TASK-001 | ブリッジ基盤を作成 | P0 | codex-channels | done |
 
-### v0.1.1: サービス運用の追加
+### v0.1.1: 確認フローの追加
 
 | | ID | Title | Priority | Repo | Status |
 |-|-----|-------|----------|------|--------|
-| [x] | TASK-002 | Windows サービス管理コマンドを追加 | P0 | codex-channels | done |
+| [x] | TASK-002 | 確認フローと添付処理を追加 | P0 | codex-channels | done |
 
-### v0.1.2: 確認フローの追加
-
-| | ID | Title | Priority | Repo | Status |
-|-|-----|-------|----------|------|--------|
-| [x] | TASK-003 | 確認後の継続フローを実装 | P0 | codex-channels | done |
-
-### v0.1.3: 添付と進捗の追加
+### v0.1.2: 運用コマンドの追加
 
 | | ID | Title | Priority | Repo | Status |
 |-|-----|-------|----------|------|--------|
-| [x] | TASK-004 | Telegram 添付と進捗更新を追加 | P1 | codex-channels | done |
+| [x] | TASK-003 | Telegram 制御コマンドとサービス管理を追加 | P0 | codex-channels | done |
 
-### v0.1.4: 計画の初期化
-
-| | ID | Title | Priority | Repo | Status |
-|-|-----|-------|----------|------|--------|
-| [x] | TASK-005 | 計画の初期化とロードマップ同期を追加 | P1 | codex-channels | done |
-
-### v0.1.5: 計画の検証と公開面の保護
+### v0.1.3: 計画の初期化
 
 | | ID | Title | Priority | Repo | Status |
 |-|-----|-------|----------|------|--------|
-| [x] | TASK-006 | 計画入力を検証し、公開ファイルを保護 | P1 | codex-channels | done |
+| [x] | TASK-004 | 計画の初期化と公開面の保護を追加 | P1 | codex-channels | done |
 
-### v0.1.6: ワークスペース切り替え
-
-| | ID | Title | Priority | Repo | Status |
-|-|-----|-------|----------|------|--------|
-| [x] | TASK-007 | 会話ごとのワークスペース切り替えを追加 | P1 | codex-channels | done |
-
-### v0.1.7: 実機スモークの拡張
+### v0.1.4: 計画の堅牢化
 
 | | ID | Title | Priority | Repo | Status |
 |-|-----|-------|----------|------|--------|
-| [ ] | TASK-008 | 実機の end-to-end スモークを追加 | P0 | codex-channels | backlog |
+| [x] | TASK-005 | 計画検証と探索の堅牢化を追加 | P1 | codex-channels | done |
+
+### v0.1.5: 自動継続の追加
+
+| | ID | Title | Priority | Repo | Status |
+|-|-----|-------|----------|------|--------|
+| [x] | TASK-006 | 自動継続モードを追加 | P1 | codex-channels | done |
+
+### v0.1.6: 実機スモークの追加
+
+| | ID | Title | Priority | Repo | Status |
+|-|-----|-------|----------|------|--------|
+| [x] | TASK-007 | 実機スモークと optional profile を追加 | P1 | codex-channels | done |
+
+### v0.1.7: ワークスペース切り替え
+
+| | ID | Title | Priority | Repo | Status |
+|-|-----|-------|----------|------|--------|
+| [x] | TASK-008 | 会話ごとのワークスペース切り替えを追加 | P0 | codex-channels | done |
+
+### v0.1.8: リリース自動化
+
+| | ID | Title | Priority | Repo | Status |
+|-|-----|-------|----------|------|--------|
+| [-] | TASK-009 | リリース自動化と履歴 release を追加 | P0 | codex-channels | active |
 
 ## 凡例
 

@@ -1,4 +1,5 @@
 /target/
+/release/
 /state/
 /.idea/
 /.vscode/
