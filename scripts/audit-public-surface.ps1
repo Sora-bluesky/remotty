@@ -32,6 +32,8 @@ $requiredTracked = @(
     'tasks/backlog.example.yaml',
     'tasks/roadmap-title-ja.example.psd1',
     'tasks/ROADMAP.example.md',
+    'docs/readme-overview.svg',
+    'scripts/audit-secret-surface.ps1',
     'scripts/planning-paths.ps1',
     'scripts/setup-planning.ps1',
     'scripts/sync-roadmap.ps1'

@@ -6,6 +6,10 @@
 
 スマホの Telegram で bot に指示を送ると、手元の Windows PC で `codex` が動き、結果が同じチャットへ返ります。公開サーバや webhook は不要で、bot token と会話履歴は PC 側で扱います。
 
+![概要図](docs/readme-overview.svg)
+
+Telegram から指示を送り、手元の Windows PC で `codex` を動かし、結果を同じチャットに返します。
+
 ## できること
 
 - Telegram bot とローカルの Codex をつなぐ
@@ -176,11 +180,14 @@ cargo run -- service uninstall
 cargo fmt --check
 cargo test
 cargo check
+pwsh -NoProfile -File scripts/audit-public-surface.ps1
+pwsh -NoProfile -File scripts/audit-secret-surface.ps1
 ```
 
 ### 任意の実機スモーク
 
 実機スモークは任意です。CI では動きません。
+`LIVE_*` の値は、その時のシェルの環境変数だけで渡してください。追跡ファイルへは書かないでください。
 
 必須の環境変数:
 

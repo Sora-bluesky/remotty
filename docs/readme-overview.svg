@@ -1,0 +1,63 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F3EC"/>
+      <stop offset="1" stop-color="#EEF4FA"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FBFE"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#0F172A" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10V0Z" fill="#2F5D8C"/>
+    </marker>
+    <style>
+      .title { font: 700 36px 'Segoe UI', sans-serif; fill: #16263A; }
+      .label { font: 700 24px 'Segoe UI', sans-serif; fill: #18324D; }
+      .small { font: 700 16px 'Segoe UI', sans-serif; fill: #2F5D8C; letter-spacing: 0.08em; }
+      .mini { font: 600 14px 'Segoe UI', sans-serif; fill: #5B6B7B; }
+      .note { font: 600 13px 'Segoe UI', sans-serif; fill: #6B7B8D; }
+      .num { font: 700 20px 'Segoe UI', sans-serif; fill: #FFFFFF; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="520" rx="28" fill="url(#bg)"/>
+  <text x="72" y="92" class="title">How a Telegram message runs code on your PC</text>
+
+  <rect x="84" y="184" width="210" height="212" rx="28" fill="url(#card)" filter="url(#shadow)"/>
+  <rect x="140" y="230" width="98" height="122" rx="18" fill="#6457C2"/>
+  <circle cx="189" cy="246" r="7" fill="#EDEBFF"/>
+  <rect x="154" y="274" width="70" height="14" rx="7" fill="#EDEBFF"/>
+  <rect x="154" y="300" width="70" height="14" rx="7" fill="#EDEBFF" opacity="0.82"/>
+  <rect x="154" y="326" width="44" height="14" rx="7" fill="#EDEBFF" opacity="0.64"/>
+  <text x="120" y="434" class="label">Telegram</text>
+
+  <rect x="354" y="150" width="510" height="262" rx="32" fill="url(#card)" filter="url(#shadow)"/>
+  <text x="392" y="208" class="small">WINDOWS PC</text>
+  <rect x="394" y="232" width="286" height="128" rx="28" fill="#17324D"/>
+  <text x="424" y="280" style="font: 700 28px 'Segoe UI', sans-serif; fill: #F8FAFC;">codex-channels</text>
+  <rect x="426" y="296" width="150" height="42" rx="18" fill="#FFFFFF" opacity="0.98"/>
+  <text x="460" y="324" style="font: 700 24px 'Consolas', monospace; fill: #17324D;">codex</text>
+  <text x="426" y="352" class="note" style="fill:#D8E7F7;">receives the message and runs the AI coding assistant</text>
+  <rect x="704" y="232" width="118" height="128" rx="26" fill="#FFF4E2"/>
+  <text x="726" y="286" class="label" style="font-size: 22px;">Workspace</text>
+  <text x="432" y="388" class="note">receives your message</text>
+  <text x="706" y="388" class="note">your code and files</text>
+
+  <path d="M294 290H350" stroke="#2F5D8C" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M576 316H700" stroke="#2F5D8C" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M470 360C448 410 360 436 248 428C220 426 206 412 196 396" stroke="#D7762C" stroke-width="8" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+
+  <circle cx="315" cy="244" r="17" fill="#2F5D8C"/>
+  <text x="309" y="251" class="num">1</text>
+  <text x="270" y="218" class="note">message in</text>
+  <circle cx="632" cy="280" r="17" fill="#2F5D8C"/>
+  <text x="626" y="287" class="num">2</text>
+  <text x="544" y="252" class="note">launches codex in the workspace</text>
+  <circle cx="432" cy="414" r="17" fill="#D7762C"/>
+  <text x="426" y="421" class="num">3</text>
+  <text x="460" y="420" class="note">reply back</text>
+</svg>

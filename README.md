@@ -6,6 +6,10 @@
 
 It runs on your Windows machine, receives messages from your Telegram bot, starts `codex`, and sends the result back to the same chat. The project is designed for people who want a simple chat-based control surface without exposing a public webhook server.
 
+![Overview](docs/readme-overview.svg)
+
+Send a message on Telegram, let your Windows PC run `codex`, and get the reply back in the same chat.
+
 ## What It Does
 
 - Connects a Telegram bot to a local Codex workflow
@@ -191,11 +195,14 @@ cargo run -- service uninstall
 cargo fmt --check
 cargo test
 cargo check
+pwsh -NoProfile -File scripts/audit-public-surface.ps1
+pwsh -NoProfile -File scripts/audit-secret-surface.ps1
 ```
 
 ### Optional live smoke test
 
 The live smoke test is opt-in and does not run in CI.
+Keep the `LIVE_*` values in the current shell only. Do not write them into tracked files.
 
 Required environment variables:
 
