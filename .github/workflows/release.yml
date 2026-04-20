@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            artifact: codex-channels-windows-x64
+            binary: codex-telegram-bridge.exe
+            renamed: codex-telegram-bridge-x64.exe
+          - target: aarch64-pc-windows-msvc
+            artifact: codex-channels-windows-arm64
+            binary: codex-telegram-bridge.exe
+            renamed: codex-telegram-bridge-arm64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Install PowerShell
+        run: sudo apt-get update && sudo apt-get install -y powershell
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp codex-channels-windows-x64/codex-telegram-bridge.exe release/codex-telegram-bridge-x64.exe
+          cp codex-channels-windows-arm64/codex-telegram-bridge.exe release/codex-telegram-bridge-arm64.exe
+          cd release && sha256sum *.exe > SHA256SUMS
+
+      - name: Generate release body
+        shell: pwsh
+        run: ./scripts/generate-release-notes.ps1 -Version "${{ github.ref_name }}" -OutputPath "release/release-body.md"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release/release-body.md
+          files: release/*
