@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use async_trait::async_trait;
 use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -21,6 +22,103 @@ const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
 const MAX_TELEGRAM_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_INFINITE_AUTO_TURNS: usize = 16;
 const AUTO_CONTINUE_STOP_MARKER: &str = "CHANNEL_WAITING";
+
+#[async_trait]
+trait TelegramApi {
+    async fn send_message(
+        &self,
+        chat_id: i64,
+        text: &str,
+    ) -> Result<crate::telegram::SendMessageResult>;
+    async fn send_message_with_inline_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        buttons: &[crate::telegram::InlineKeyboardButton],
+    ) -> Result<crate::telegram::SendMessageResult>;
+    async fn answer_callback_query(
+        &self,
+        callback_query_id: &str,
+        text: Option<&str>,
+    ) -> Result<()>;
+    async fn edit_message(&self, chat_id: i64, message_id: i64, text: &str) -> Result<()>;
+    async fn edit_message_clearing_inline_keyboard(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: &str,
+    ) -> Result<()>;
+    async fn save_attachments(
+        &self,
+        attachments: &[crate::telegram::TelegramAttachment],
+        state_dir: &std::path::Path,
+        max_bytes: usize,
+    ) -> Result<Vec<crate::telegram::SavedTelegramAttachment>>;
+}
+
+#[async_trait]
+impl TelegramApi for TelegramClient {
+    async fn send_message(
+        &self,
+        chat_id: i64,
+        text: &str,
+    ) -> Result<crate::telegram::SendMessageResult> {
+        TelegramClient::send_message(self, chat_id, text).await
+    }
+
+    async fn send_message_with_inline_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        buttons: &[crate::telegram::InlineKeyboardButton],
+    ) -> Result<crate::telegram::SendMessageResult> {
+        TelegramClient::send_message_with_inline_keyboard(self, chat_id, text, buttons).await
+    }
+
+    async fn answer_callback_query(
+        &self,
+        callback_query_id: &str,
+        text: Option<&str>,
+    ) -> Result<()> {
+        TelegramClient::answer_callback_query(self, callback_query_id, text).await
+    }
+
+    async fn edit_message(&self, chat_id: i64, message_id: i64, text: &str) -> Result<()> {
+        TelegramClient::edit_message(self, chat_id, message_id, text).await
+    }
+
+    async fn edit_message_clearing_inline_keyboard(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: &str,
+    ) -> Result<()> {
+        TelegramClient::edit_message_clearing_inline_keyboard(self, chat_id, message_id, text).await
+    }
+
+    async fn save_attachments(
+        &self,
+        attachments: &[crate::telegram::TelegramAttachment],
+        state_dir: &std::path::Path,
+        max_bytes: usize,
+    ) -> Result<Vec<crate::telegram::SavedTelegramAttachment>> {
+        TelegramClient::save_attachments(self, attachments, state_dir, max_bytes).await
+    }
+}
+
+struct ApprovalDecisionReply {
+    reply_text: String,
+    callback_text: String,
+}
+
+impl ApprovalDecisionReply {
+    fn new(reply_text: impl Into<String>, callback_text: impl Into<String>) -> Self {
+        Self {
+            reply_text: reply_text.into(),
+            callback_text: callback_text.into(),
+        }
+    }
+}
 
 pub async fn run_console(config: Config) -> Result<()> {
     let shutdown = CancellationToken::new();
@@ -106,16 +204,16 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
 async fn handle_message(
     config: &Config,
     store: &Store,
-    telegram: &TelegramClient,
+    telegram: &impl TelegramApi,
     codex: &CodexRunner,
     sender_id: i64,
     update: IncomingMessage,
 ) -> Result<()> {
     let existing_lane = store.find_lane(update.chat_id, &update.thread_key)?;
     if let Some(command) = update.control_command() {
-        let reply_result = match command {
+        let (reply_result, callback_text) = match command {
             TelegramControlCommand::Approve { request_id } => {
-                handle_approval_decision_message(
+                let result = handle_approval_decision_message(
                     config,
                     store,
                     telegram,
@@ -131,10 +229,15 @@ async fn handle_message(
                     &request_id,
                     true,
                 )
-                .await
+                .await;
+                let callback_text = match &result {
+                    Ok(reply) => reply.callback_text.clone(),
+                    Err(_) => "承認操作を処理できませんでした。".to_owned(),
+                };
+                (result.map(|reply| reply.reply_text), Some(callback_text))
             }
             TelegramControlCommand::Deny { request_id } => {
-                handle_approval_decision_message(
+                let result = handle_approval_decision_message(
                     config,
                     store,
                     telegram,
@@ -150,7 +253,12 @@ async fn handle_message(
                     &request_id,
                     false,
                 )
-                .await
+                .await;
+                let callback_text = match &result {
+                    Ok(reply) => reply.callback_text.clone(),
+                    Err(_) => "承認操作を処理できませんでした。".to_owned(),
+                };
+                (result.map(|reply| reply.reply_text), Some(callback_text))
             }
             other => handle_control_command(
                 store,
@@ -161,16 +269,15 @@ async fn handle_message(
                 existing_lane.as_ref(),
                 other,
                 config.policy.max_turns_limit,
-            ),
+            )
+            .map(|reply| (Ok(reply), None))?,
         };
         if let Some(callback_query_id) = update.callback_query_id.as_deref() {
-            let callback_text = if reply_result.is_ok() {
-                "処理しました。"
-            } else {
-                "処理できませんでした。"
-            };
             let _ = telegram
-                .answer_callback_query(callback_query_id, Some(callback_text))
+                .answer_callback_query(
+                    callback_query_id,
+                    Some(callback_text.as_deref().unwrap_or("操作を処理しました。")),
+                )
                 .await;
         }
         let reply = reply_result?;
@@ -420,7 +527,7 @@ fn handle_control_command(
 async fn handle_approval_decision_message(
     config: &Config,
     store: &Store,
-    telegram: &TelegramClient,
+    telegram: &impl TelegramApi,
     codex: &CodexRunner,
     sender_id: i64,
     chat_id: i64,
@@ -429,7 +536,7 @@ async fn handle_approval_decision_message(
     callback_message_id: Option<i64>,
     request_id: &str,
     approved: bool,
-) -> Result<String> {
+) -> Result<ApprovalDecisionReply> {
     let request = match find_approval_request_for_locator(store, request_id)? {
         ApprovalRequestLookup::Found(request) => request,
         ApprovalRequestLookup::Stale(request) => {
@@ -442,7 +549,10 @@ async fn handle_approval_decision_message(
                     .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
                     .await;
             }
-            return Ok(text);
+            return Ok(ApprovalDecisionReply::new(
+                text,
+                "古い button です。最新の通知を使ってください。",
+            ));
         }
         ApprovalRequestLookup::Missing => {
             let text = format!("承認要求 `{request_id}` は見つかりません。");
@@ -451,25 +561,38 @@ async fn handle_approval_decision_message(
                     .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
                     .await;
             }
-            return Ok(text);
+            return Ok(ApprovalDecisionReply::new(
+                text,
+                "承認要求が見つかりません。",
+            ));
         }
     };
     let request_id = request.request_id.as_str();
     let Some(lane) = lane else {
-        return Ok("この会話には承認対象のレーンがありません。".to_owned());
+        return Ok(ApprovalDecisionReply::new(
+            "この会話には承認対象のレーンがありません。",
+            "この会話では処理できません。",
+        ));
     };
     if lane.lane_id != request.lane_id {
-        return Ok("この会話の承認要求ではありません。".to_owned());
+        return Ok(ApprovalDecisionReply::new(
+            "この会話の承認要求ではありません。",
+            "別の会話の承認要求です。",
+        ));
     }
     let current_lane = store
         .find_lane(chat_id, thread_key)?
         .ok_or_else(|| anyhow!("承認対象のレーンが見つかりません。"))?;
     if current_lane.lane_id != request.lane_id {
-        return Ok("この会話の承認要求ではありません。".to_owned());
+        return Ok(ApprovalDecisionReply::new(
+            "この会話の承認要求ではありません。",
+            "別の会話の承認要求です。",
+        ));
     }
     if request.request_kind == crate::store::ApprovalRequestKind::ToolUserInput {
-        return Ok(format!(
-            "承認要求 `{request_id}` は追加入力型のため、まだ処理できません。"
+        return Ok(ApprovalDecisionReply::new(
+            format!("承認要求 `{request_id}` は追加入力型のため、まだ処理できません。"),
+            "この種類は Telegram から返せません。",
         ));
     }
 
@@ -479,14 +602,20 @@ async fn handle_approval_decision_message(
         ApprovalRequestStatus::Declined
     };
     if request.status == ApprovalRequestStatus::Dispatching {
-        return Ok(format!(
-            "承認要求 `{request_id}` は送信直後です。数秒待ってからもう一度操作してください。"
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "承認要求 `{request_id}` は送信直後です。数秒待ってからもう一度操作してください。"
+            ),
+            "送信直後です。数秒待ってください。",
         ));
     }
     if request.status != ApprovalRequestStatus::Pending {
-        return Ok(format!(
-            "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{}`",
-            approval_status_name(request.status)
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{}`",
+                approval_status_name(request.status)
+            ),
+            format!("すでに `{}` です。", approval_status_name(request.status)),
         ));
     }
 
@@ -497,8 +626,11 @@ async fn handle_approval_decision_message(
                 .find_approval_request(request_id)?
                 .map(|current| approval_status_name(current.status).to_owned())
                 .unwrap_or_else(|| "不明".to_owned());
-            return Ok(format!(
-                "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"
+                ),
+                format!("すでに `{current_status}` です。"),
             ));
         }
         if let Some(message_id) = request.telegram_message_id {
@@ -507,9 +639,16 @@ async fn handle_approval_decision_message(
                 .edit_message_clearing_inline_keyboard(chat_id, message_id, &status_text)
                 .await;
         }
-        return Ok(format!(
-            "承認要求 `{request_id}` を {} として記録しました。`app_server` を有効にすると、そのまま継続へ返せます。",
-            if approved { "承認" } else { "非承認" }
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "承認要求 `{request_id}` を {} として記録しました。`app_server` を有効にすると、そのまま継続へ返せます。",
+                if approved { "承認" } else { "非承認" }
+            ),
+            if approved {
+                "承認を記録しました。".to_owned()
+            } else {
+                "非承認を記録しました。".to_owned()
+            },
         ));
     }
     if request.transport_request_id.trim().is_empty() {
@@ -522,8 +661,11 @@ async fn handle_approval_decision_message(
                 .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
                 .await;
         }
-        return Ok(format!(
-            "承認要求 `{request_id}` は旧形式のため継続できません。元の依頼をもう一度送ってください。"
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "承認要求 `{request_id}` は旧形式のため継続できません。元の依頼をもう一度送ってください。"
+            ),
+            "旧形式の要求を無効化しました。".to_owned(),
         ));
     }
 
@@ -534,8 +676,9 @@ async fn handle_approval_decision_message(
             .find_approval_request(request_id)?
             .map(|current| approval_status_name(current.status).to_owned())
             .unwrap_or_else(|| "不明".to_owned());
-        return Ok(format!(
-            "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"
+        return Ok(ApprovalDecisionReply::new(
+            format!("承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"),
+            format!("すでに `{current_status}` です。"),
         ));
     }
     let continued_outcome = match codex.resolve_approval(&request, approved).await {
@@ -558,8 +701,11 @@ async fn handle_approval_decision_message(
                     .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
                     .await;
             }
-            return Ok(format!(
-                "承認要求 `{request_id}` の継続結果が不明です。ローカルのログを確認し、状況が確定するまで再送しないでください。"
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "承認要求 `{request_id}` の継続結果が不明です。ローカルのログを確認し、状況が確定するまで再送しないでください。"
+                ),
+                "継続結果が不明です。ローカルのログを確認してください。".to_owned(),
             ));
         }
     };
@@ -569,8 +715,9 @@ async fn handle_approval_decision_message(
             .find_approval_request(request_id)?
             .map(|current| approval_status_name(current.status).to_owned())
             .unwrap_or_else(|| "不明".to_owned());
-        return Ok(format!(
-            "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"
+        return Ok(ApprovalDecisionReply::new(
+            format!("承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"),
+            format!("すでに `{current_status}` です。"),
         ));
     }
     if let Some(message_id) = request.telegram_message_id {
@@ -600,8 +747,11 @@ async fn handle_approval_decision_message(
                 LaneState::Failed,
                 continued_session_id.as_deref(),
             )?;
-            return Ok(format!(
-                "承認要求 `{request_id}` 自体は記録しましたが、その後の処理に失敗しました。ローカルのログを確認してください。"
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "承認要求 `{request_id}` 自体は記録しましたが、その後の処理に失敗しました。ローカルのログを確認してください。"
+                ),
+                "承認後の処理に失敗しました。ローカルのログを確認してください。".to_owned(),
             ));
         }
     };
@@ -641,8 +791,11 @@ async fn handle_approval_decision_message(
             LaneState::Failed,
             outcome.session_id.as_deref(),
         )?;
-        return Ok(format!(
-            "承認要求 `{request_id}` 自体は記録しましたが、新しい承認通知の保存に失敗しました。ローカルのログを確認してください。"
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "承認要求 `{request_id}` 自体は記録しましたが、新しい承認通知の保存に失敗しました。ローカルのログを確認してください。"
+            ),
+            "次の承認通知の保存に失敗しました。".to_owned(),
         ));
     }
     store.update_lane_state(&lane.lane_id, next_state, outcome.session_id.as_deref())?;
@@ -656,9 +809,16 @@ async fn handle_approval_decision_message(
     )?;
 
     if outcome.approval_pending {
-        return Ok(format!(
-            "{} 次の承認待ちを送信しました。",
-            format_approval_resolution_message(request_id, approved)
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "{} 次の承認待ちを送信しました。",
+                format_approval_resolution_message(request_id, approved)
+            ),
+            if approved {
+                "承認を反映し、次の承認待ちを送信しました。".to_owned()
+            } else {
+                "非承認を反映し、次の承認待ちを送信しました。".to_owned()
+            },
         ));
     }
 
@@ -674,7 +834,14 @@ async fn handle_approval_decision_message(
     } else {
         truncate(&outcome.last_message, config.policy.max_output_chars)
     };
-    Ok(reply)
+    Ok(ApprovalDecisionReply::new(
+        reply,
+        if approved {
+            "承認を反映しました。".to_owned()
+        } else {
+            "非承認を反映しました。".to_owned()
+        },
+    ))
 }
 
 fn handle_workspace_command(
@@ -958,7 +1125,7 @@ fn format_workspace_message(
 
 async fn persist_approval_requests(
     store: &Store,
-    telegram: &TelegramClient,
+    telegram: &impl TelegramApi,
     chat_id: i64,
     lane_id: &str,
     run_id: &str,
@@ -1068,7 +1235,7 @@ async fn persist_approval_requests(
 
 async fn invalidate_pending_approval_notifications_for_restart(
     store: &Store,
-    telegram: &TelegramClient,
+    telegram: &impl TelegramApi,
 ) {
     let pending = match store
         .invalidate_pending_approval_notifications_for_restart(ApprovalRequestTransport::AppServer)
@@ -1136,7 +1303,7 @@ async fn invalidate_pending_approval_notifications_for_restart(
     }
 }
 
-async fn fail_resolving_approval_notifications(store: &Store, telegram: &TelegramClient) {
+async fn fail_resolving_approval_notifications(store: &Store, telegram: &impl TelegramApi) {
     let resolving = match store
         .list_recent_resolving_approval_notifications(ApprovalRequestTransport::AppServer, i64::MIN)
     {
@@ -1223,7 +1390,7 @@ async fn fail_resolving_approval_notifications(store: &Store, telegram: &Telegra
 
 async fn invalidate_dispatched_approval_notifications(
     store: &Store,
-    telegram: &TelegramClient,
+    telegram: &impl TelegramApi,
     chat_id: i64,
     lane_id: &str,
     run_id: &str,
@@ -1632,10 +1799,134 @@ impl LaneStateLabel for LaneState {
 mod tests {
     use super::*;
     use crate::config::WorkspaceConfig;
-    use crate::store::Store;
-    use crate::telegram::{SavedTelegramAttachment, TelegramAttachment, TelegramRemoteFile};
+    use crate::store::{
+        ApprovalRequestKind, ApprovalRequestStatus, ApprovalRequestTransport, NewApprovalRequest,
+        Store,
+    };
+    use crate::telegram::{
+        IncomingMessage, InlineKeyboardButton, SavedTelegramAttachment, SendMessageResult,
+        TelegramAttachment, TelegramControlCommand, TelegramRemoteFile,
+    };
     use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SentMessageCall {
+        chat_id: i64,
+        text: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct EditedMessageCall {
+        chat_id: i64,
+        message_id: i64,
+        text: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct CallbackAnswerCall {
+        callback_query_id: String,
+        text: Option<String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct MockTelegram {
+        sent_messages: Arc<Mutex<Vec<SentMessageCall>>>,
+        edited_messages: Arc<Mutex<Vec<EditedMessageCall>>>,
+        callback_answers: Arc<Mutex<Vec<CallbackAnswerCall>>>,
+    }
+
+    impl MockTelegram {
+        fn sent_messages(&self) -> Vec<SentMessageCall> {
+            self.sent_messages.lock().expect("sent messages").clone()
+        }
+
+        fn edited_messages(&self) -> Vec<EditedMessageCall> {
+            self.edited_messages
+                .lock()
+                .expect("edited messages")
+                .clone()
+        }
+
+        fn callback_answers(&self) -> Vec<CallbackAnswerCall> {
+            self.callback_answers
+                .lock()
+                .expect("callback answers")
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl TelegramApi for MockTelegram {
+        async fn send_message(&self, chat_id: i64, text: &str) -> Result<SendMessageResult> {
+            self.sent_messages
+                .lock()
+                .expect("sent messages")
+                .push(SentMessageCall {
+                    chat_id,
+                    text: text.to_owned(),
+                });
+            Ok(SendMessageResult {
+                message_id: self.sent_messages.lock().expect("sent messages").len() as i64,
+            })
+        }
+
+        async fn send_message_with_inline_keyboard(
+            &self,
+            chat_id: i64,
+            text: &str,
+            _buttons: &[InlineKeyboardButton],
+        ) -> Result<SendMessageResult> {
+            self.send_message(chat_id, text).await
+        }
+
+        async fn answer_callback_query(
+            &self,
+            callback_query_id: &str,
+            text: Option<&str>,
+        ) -> Result<()> {
+            self.callback_answers
+                .lock()
+                .expect("callback answers")
+                .push(CallbackAnswerCall {
+                    callback_query_id: callback_query_id.to_owned(),
+                    text: text.map(ToOwned::to_owned),
+                });
+            Ok(())
+        }
+
+        async fn edit_message(&self, chat_id: i64, message_id: i64, text: &str) -> Result<()> {
+            self.edit_message_clearing_inline_keyboard(chat_id, message_id, text)
+                .await
+        }
+
+        async fn edit_message_clearing_inline_keyboard(
+            &self,
+            chat_id: i64,
+            message_id: i64,
+            text: &str,
+        ) -> Result<()> {
+            self.edited_messages
+                .lock()
+                .expect("edited messages")
+                .push(EditedMessageCall {
+                    chat_id,
+                    message_id,
+                    text: text.to_owned(),
+                });
+            Ok(())
+        }
+
+        async fn save_attachments(
+            &self,
+            _attachments: &[crate::telegram::TelegramAttachment],
+            _state_dir: &std::path::Path,
+            _max_bytes: usize,
+        ) -> Result<Vec<crate::telegram::SavedTelegramAttachment>> {
+            Ok(Vec::new())
+        }
+    }
 
     fn failed_summary() -> CheckRunSummary {
         CheckRunSummary {
@@ -2197,6 +2488,188 @@ mod tests {
                 test_workspace("docs", "C:/docs"),
             ],
         }
+    }
+
+    fn insert_pending_approval_request(
+        store: &Store,
+        lane: &LaneRecord,
+        run_id: &str,
+        request_id: &str,
+        transport: ApprovalRequestTransport,
+        request_kind: ApprovalRequestKind,
+    ) {
+        store
+            .insert_approval_request(NewApprovalRequest {
+                request_id: request_id.to_owned(),
+                transport_request_id: format!("transport-{request_id}"),
+                lane_id: lane.lane_id.clone(),
+                run_id: run_id.to_owned(),
+                thread_id: format!("thread-{request_id}"),
+                turn_id: format!("turn-{request_id}"),
+                item_id: format!("item-{request_id}"),
+                transport,
+                request_kind,
+                summary_text: format!("summary for {request_id}"),
+                raw_payload_json: "{}".to_owned(),
+                status: ApprovalRequestStatus::Pending,
+            })
+            .expect("approval request should insert");
+    }
+
+    #[tokio::test]
+    async fn handle_message_reports_specific_callback_text_for_processed_request() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let config = test_config();
+        let codex = CodexRunner::new(config.codex.clone());
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(10, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+
+        insert_pending_approval_request(
+            &store,
+            &lane,
+            "run-processed",
+            "req-processed",
+            ApprovalRequestTransport::Exec,
+            ApprovalRequestKind::CommandExecution,
+        );
+        store
+            .resolve_approval_request("req-processed", ApprovalRequestStatus::Approved, 90)
+            .expect("approval should resolve");
+
+        handle_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            77,
+            IncomingMessage {
+                update_id: 1,
+                chat_id: 10,
+                chat_type: "private".to_owned(),
+                sender_id: Some(77),
+                text: String::new(),
+                attachments: Vec::new(),
+                telegram_message_id: 501,
+                thread_key: "dm".to_owned(),
+                callback_query_id: Some("callback-processed".to_owned()),
+                control_command_override: Some(TelegramControlCommand::Approve {
+                    request_id: "req-processed".to_owned(),
+                }),
+                payload_json: "{}".to_owned(),
+            },
+        )
+        .await
+        .expect("callback handling should succeed");
+
+        let callback_answers = telegram.callback_answers();
+        assert_eq!(callback_answers.len(), 1);
+        assert_eq!(
+            callback_answers[0].text.as_deref(),
+            Some("すでに `approved` です。")
+        );
+
+        let sent_messages = telegram.sent_messages();
+        assert_eq!(sent_messages.len(), 1);
+        assert!(sent_messages[0].text.contains("すでに処理済み"));
+    }
+
+    #[tokio::test]
+    async fn approval_decision_message_rejects_tool_user_input_requests() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let config = test_config();
+        let codex = CodexRunner::new(config.codex.clone());
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(22, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+
+        insert_pending_approval_request(
+            &store,
+            &lane,
+            "run-tool-input",
+            "req-tool-input",
+            ApprovalRequestTransport::AppServer,
+            ApprovalRequestKind::ToolUserInput,
+        );
+
+        let reply = handle_approval_decision_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            77,
+            22,
+            "dm",
+            Some(&lane),
+            Some(700),
+            "req-tool-input",
+            true,
+        )
+        .await
+        .expect("approval decision should return a reply");
+
+        assert_eq!(reply.callback_text, "この種類は Telegram から返せません。");
+        assert!(reply.reply_text.contains("まだ処理できません"));
+        assert!(telegram.edited_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn restart_invalidation_edits_existing_notice_and_marks_request_invalidated() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(31, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        let run = store
+            .insert_run(NewRun {
+                lane_id: lane.lane_id.clone(),
+                run_kind: "restart".to_owned(),
+            })
+            .expect("run should insert");
+        store
+            .update_lane_state(
+                &lane.lane_id,
+                LaneState::NeedsLocalApproval,
+                Some("session-1"),
+            )
+            .expect("lane should update");
+        insert_pending_approval_request(
+            &store,
+            &lane,
+            &run.run_id,
+            "req-restart",
+            ApprovalRequestTransport::AppServer,
+            ApprovalRequestKind::CommandExecution,
+        );
+        store
+            .set_approval_request_message_id("req-restart", 88)
+            .expect("message id should be stored");
+
+        invalidate_pending_approval_notifications_for_restart(&store, &telegram).await;
+
+        let request = store
+            .find_approval_request("req-restart")
+            .expect("approval should load")
+            .expect("approval should exist");
+        assert_eq!(request.status, ApprovalRequestStatus::Invalidated);
+
+        let lane = store
+            .find_lane(31, "dm")
+            .expect("lane should load")
+            .expect("lane should exist");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id, None);
+
+        let edits = telegram.edited_messages();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].message_id, 88);
+        assert!(edits[0].text.contains("bridge の再起動で無効"));
+        assert!(telegram.sent_messages().is_empty());
     }
 
     #[test]
