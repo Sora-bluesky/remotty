@@ -204,6 +204,8 @@ async fn drain_pending_updates(bot_token: &str) -> Result<()> {
     let client = Client::new();
     let mut offset = None;
 
+    ensure_polling_mode(&client, bot_token).await?;
+
     loop {
         let payload = serde_json::json!({
             "offset": offset,
@@ -218,7 +220,13 @@ async fn drain_pending_updates(bot_token: &str) -> Result<()> {
             .json(&payload)
             .send()
             .await
-            .context("failed to fetch pending Telegram updates")?
+            .context("failed to fetch pending Telegram updates")?;
+        if response.status() == reqwest::StatusCode::CONFLICT {
+            bail!(
+                "telegram getUpdates returned 409 Conflict. Stop any other bridge, live test, or bot worker that is reading updates for this bot, then retry."
+            );
+        }
+        let response = response
             .error_for_status()
             .context("telegram getUpdates returned error status")?
             .json::<serde_json::Value>()
@@ -237,6 +245,45 @@ async fn drain_pending_updates(bot_token: &str) -> Result<()> {
         };
         offset = Some(last_update_id + 1);
     }
+}
+
+async fn ensure_polling_mode(client: &Client, bot_token: &str) -> Result<()> {
+    let webhook = client
+        .post(format!(
+            "https://api.telegram.org/bot{}/getWebhookInfo",
+            bot_token
+        ))
+        .send()
+        .await
+        .context("failed to read Telegram webhook status")?
+        .error_for_status()
+        .context("telegram getWebhookInfo returned error status")?
+        .json::<serde_json::Value>()
+        .await
+        .context("failed to decode Telegram webhook status")?;
+    let webhook_url = webhook
+        .get("result")
+        .and_then(|result| result.get("url"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if webhook_url.is_empty() {
+        return Ok(());
+    }
+
+    client
+        .post(format!(
+            "https://api.telegram.org/bot{}/deleteWebhook",
+            bot_token
+        ))
+        .json(&serde_json::json!({
+            "drop_pending_updates": true,
+        }))
+        .send()
+        .await
+        .context("failed to switch Telegram bot to polling mode")?
+        .error_for_status()
+        .context("telegram deleteWebhook returned error status")?;
+    Ok(())
 }
 
 async fn wait_for_inbound(
