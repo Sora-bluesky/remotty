@@ -12,8 +12,7 @@ Run the manual approval-decline smoke against Telegram without printing any secr
 6. Follow the local terminal guidance and use Telegram to press `非承認` when the pending request appears.
 7. Confirm that the smoke finished with a success message and no target file was created.
 
-If the `remotty` command is unavailable in a source checkout, fall back to
-`cargo run -- telegram smoke approval decline --config bridge.toml`.
+Use the installed `remotty` command for this check. In a source checkout, build or install the package before running manual smoke.
 
 ## Output requirements
 

@@ -43,7 +43,9 @@ pub enum TelegramCommand {
     PolicyAllowlist {
         config_path: PathBuf,
     },
-    LiveEnvCheck,
+    LiveEnvCheck {
+        config_path: PathBuf,
+    },
     Smoke {
         scenario: TelegramSmokeScenario,
         config_path: PathBuf,
@@ -126,7 +128,14 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
             }))
         }
         [action] if action == "live-env-check" => {
-            Ok(CliCommand::Telegram(TelegramCommand::LiveEnvCheck))
+            Ok(CliCommand::Telegram(TelegramCommand::LiveEnvCheck {
+                config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+            }))
+        }
+        [action, flag, value] if action == "live-env-check" && flag == "--config" => {
+            Ok(CliCommand::Telegram(TelegramCommand::LiveEnvCheck {
+                config_path: PathBuf::from(value),
+            }))
         }
         [action, subaction, scenario] if action == "smoke" && subaction == "approval" => {
             Ok(CliCommand::Telegram(TelegramCommand::Smoke {
@@ -143,7 +152,7 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
             }))
         }
         _ => bail!(
-            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram access-pair <code> [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check | telegram smoke approval <accept|decline> [--config <path>]"
+            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram access-pair <code> [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check [--config <path>] | telegram smoke approval <accept|decline> [--config <path>]"
         ),
     }
 }
@@ -337,7 +346,25 @@ mod tests {
         assert_eq!(
             parse_args(vec!["telegram".to_owned(), "live-env-check".to_owned(),])
                 .expect("telegram live-env-check should parse"),
-            CliCommand::Telegram(TelegramCommand::LiveEnvCheck)
+            CliCommand::Telegram(TelegramCommand::LiveEnvCheck {
+                config_path: PathBuf::from("bridge.toml"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_live_env_check_with_config() {
+        assert_eq!(
+            parse_args(vec![
+                "telegram".to_owned(),
+                "live-env-check".to_owned(),
+                "--config".to_owned(),
+                "custom.toml".to_owned(),
+            ])
+            .expect("telegram live-env-check --config should parse"),
+            CliCommand::Telegram(TelegramCommand::LiveEnvCheck {
+                config_path: PathBuf::from("custom.toml"),
+            })
         );
     }
 

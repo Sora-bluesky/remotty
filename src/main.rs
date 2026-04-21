@@ -81,8 +81,8 @@ async fn main() -> Result<()> {
             println!("{}", telegram_cli::policy_allowlist(config_path)?);
             Ok(())
         }
-        CliCommand::Telegram(TelegramCommand::LiveEnvCheck) => {
-            println!("{}", telegram_cli::live_env_check());
+        CliCommand::Telegram(TelegramCommand::LiveEnvCheck { config_path }) => {
+            println!("{}", telegram_cli::live_env_check(config_path).await?);
             Ok(())
         }
         CliCommand::Telegram(TelegramCommand::Smoke {

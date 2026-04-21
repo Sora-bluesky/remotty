@@ -23,12 +23,17 @@ impl TelegramPollerGuard {
                 let _ = CloseHandle(handle);
             }
             return Err(anyhow!(
-                "同じ bot を読む別の bridge がすでに動いています。別の `remotty` を止めてから再実行してください。"
+                "同じ bot を読む別の bridge がすでに動いています。別の `remotty` を止めてから再実行してください。\n{}",
+                polling_conflict_hint()
             ));
         }
 
         Ok(Self { handle })
     }
+}
+
+fn polling_conflict_hint() -> &'static str {
+    "Windows では `Get-Process remotty, codex -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path` で候補を確認できます。対象が分かる場合は `Stop-Process -Id <PID>` で止めてください。"
 }
 
 impl Drop for TelegramPollerGuard {
@@ -71,6 +76,10 @@ mod tests {
 
         let second_attempt = TelegramPollerGuard::acquire(bot_id);
         assert!(second_attempt.is_err());
+        match second_attempt {
+            Ok(_) => panic!("second guard should fail"),
+            Err(error) => assert!(error.to_string().contains("Get-Process")),
+        }
 
         drop(first_guard);
 

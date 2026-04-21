@@ -295,6 +295,26 @@ checks_profile = "default"
 
 #[tokio::test]
 #[serial]
+async fn live_env_check_reports_webhook_state_against_fake_server() -> Result<()> {
+    let server = fake_telegram::FakeTelegramServer::start(TEST_TOKEN).await?;
+    server.set_webhook_url("https://example.com/hook").await;
+    let temp = tempdir()?;
+    let fake_codex = write_fake_codex(temp.path(), "unused fake codex reply")?;
+    let (_, _) = write_bridge_config(temp.path(), &server, &fake_codex)?;
+    let config_path = temp.path().join("bridge.toml");
+    unsafe {
+        std::env::set_var("TELEGRAM_BOT_TOKEN", TEST_TOKEN);
+    }
+
+    let report = remotty::telegram_cli::live_env_check(&config_path).await?;
+
+    assert!(report.contains("- Telegram webhook: webhook-configured"));
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn bridge_round_trip_replies_against_fake_telegram_server() -> Result<()> {
     let server = fake_telegram::FakeTelegramServer::start(TEST_TOKEN).await?;
     let temp = tempdir()?;
