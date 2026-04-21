@@ -139,5 +139,16 @@
                 "Hardened release automation so Cargo.lock and empty planning updates are handled consistently."
             )
         }
+        @{
+            Version = "0.1.15"
+            Commit = "678693b2c67fd3a443e36ccf656780a52844570c"
+            Title = "npm installation package"
+            Notes = @(
+                "Added an npm package entry point that installs the matching Windows release binary."
+                "Included the local Codex plugin, bridge starter config, and npm installer in the package tarball."
+                "Attached both a stable remotty.tgz package and a versioned package tarball to GitHub Releases."
+                "Updated public setup docs to use the GitHub Release package before npm registry publishing."
+            )
+        }
     )
 }
