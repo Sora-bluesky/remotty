@@ -5,7 +5,7 @@ param(
     [string]$HistoryPath = '',
     [string]$BacklogPath = '',
     [string]$OutputPath = 'release/release-body.md',
-    [string]$Repository = 'Sora-bluesky/codex-channels',
+    [string]$Repository = 'Sora-bluesky/remotty',
     [string]$RepoRoot = ''
 )
 

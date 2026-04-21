@@ -99,5 +99,23 @@
                 "Hardened approval state recovery, persistence, and operator-facing status updates."
             )
         }
+        @{
+            Version = "0.1.11"
+            Commit = "f4eb46dd2ba67ca193e54b485d6bb4d2e78ca71e"
+            Title = "Approval callback hardening"
+            Notes = @(
+                "Improved Telegram approval callback feedback, restart invalidation, and approval state tests."
+                "Kept approval history intact while making stale or repeated approval actions safer."
+            )
+        }
+        @{
+            Version = "0.1.12"
+            Commit = "927774a512b5fe3b9ace0cd378458b6a7ab2a6af"
+            Title = "Tool input approval summaries"
+            Notes = @(
+                "Sanitized tool-input approval summaries so sensitive prompt details are not forwarded to Telegram."
+                "Tightened text truncation behavior and added coverage for summary length boundaries."
+            )
+        }
     )
 }
