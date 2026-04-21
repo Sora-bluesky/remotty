@@ -2,8 +2,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use remotty::cli::{CliCommand, SecretCommand, ServiceCommand, TelegramCommand, parse_args};
+use remotty::cli::{
+    CliCommand, DemoCommand, SecretCommand, ServiceCommand, TelegramCommand, parse_args,
+};
 use remotty::config::{Config, RunMode};
+use remotty::demo_fakechat;
 use remotty::engine;
 use remotty::live_smoke::{self, SmokeScenario};
 use remotty::service;
@@ -15,6 +18,9 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> Result<()> {
     match parse_args(std::env::args().skip(1))? {
         CliCommand::Run { config_path } => run_bridge(config_path, false).await,
+        CliCommand::Demo(DemoCommand::Fakechat(options)) => {
+            demo_fakechat::run_fakechat(options).await
+        }
         CliCommand::Secret(SecretCommand::Set { key, value }) => {
             let path = store_secret(&key, &value)?;
             println!("stored secret at {}", path.display());

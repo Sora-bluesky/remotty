@@ -2,6 +2,7 @@ pub mod app_server;
 pub mod cli;
 pub mod codex;
 pub mod config;
+pub mod demo_fakechat;
 pub mod engine;
 pub mod live_smoke;
 pub mod service;

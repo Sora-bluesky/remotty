@@ -59,6 +59,9 @@ Rust is only required when you build from a source checkout instead of using the
 
 ## Quick Start
 
+Want to try the local chat loop before creating a Telegram bot?
+Use the [Fakechat Demo](docs/fakechat-demo.md). It runs only on `localhost` and does not require a token.
+
 For the step-by-step Telegram setup, use the dedicated [Telegram Quickstart](docs/telegram-quickstart.md).
 It also explains how `remotty` differs from Codex Remote connections.
 
@@ -283,6 +286,7 @@ Common equivalents are:
 - plugin `/remotty-pair` -> `remotty telegram pair --config bridge.toml`
 - plugin `/remotty-policy-allowlist` -> `remotty telegram policy allowlist --config bridge.toml`
 - plugin `/remotty-status` -> `remotty service status`
+- plugin `/remotty-fakechat-demo` -> `remotty demo fakechat`
 - plugin `/remotty-live-env-check` -> `remotty telegram live-env-check`
 - plugin `/remotty-smoke-approval-accept` -> `remotty telegram smoke approval accept --config bridge.toml`
 - plugin `/remotty-smoke-approval-decline` -> `remotty telegram smoke approval decline --config bridge.toml`

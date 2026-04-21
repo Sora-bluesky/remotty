@@ -18,6 +18,7 @@
     ".agents/",
     "bin/",
     "bridge.toml",
+    "docs/",
     "npm/",
     "plugins/",
     "LICENSE",

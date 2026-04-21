@@ -10,6 +10,7 @@ Use it for:
 - bridge start, stop, and status workflows
 - live environment checks before manual smoke runs
 - approval-accept and approval-decline smoke runs
+- local fakechat demo before Telegram setup
 
 Available commands:
 
@@ -20,6 +21,7 @@ Available commands:
 - `/remotty-start`
 - `/remotty-status`
 - `/remotty-stop`
+- `/remotty-fakechat-demo`
 - `/remotty-live-env-check`
 - `/remotty-smoke-approval-accept`
 - `/remotty-smoke-approval-decline`

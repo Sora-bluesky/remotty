@@ -1,15 +1,30 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 const DEFAULT_CONFIG_PATH: &str = "bridge.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
     Run { config_path: PathBuf },
+    Demo(DemoCommand),
     Secret(SecretCommand),
     Service(ServiceCommand),
     Telegram(TelegramCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DemoCommand {
+    Fakechat(FakechatOptions),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakechatOptions {
+    pub host: String,
+    pub port: u16,
+    pub workspace: PathBuf,
+    pub codex_binary: String,
+    pub model: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +85,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand> 
         "secret" => parse_secret_command(&args[1..]),
         "service" => parse_service_command(&args[1..]),
         "telegram" => parse_telegram_command(&args[1..]),
+        "demo" => parse_demo_command(&args[1..]),
         "--config" => {
             let config_path = args
                 .get(1)
@@ -83,6 +99,50 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand> 
         }
         other => bail!("unknown command: {other}"),
     }
+}
+
+fn parse_demo_command(args: &[String]) -> Result<CliCommand> {
+    let Some(action) = args.first() else {
+        bail!(
+            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>]"
+        );
+    };
+    if action != "fakechat" {
+        bail!(
+            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>]"
+        );
+    }
+
+    let mut options = FakechatOptions {
+        host: "127.0.0.1".to_owned(),
+        port: 8787,
+        workspace: std::env::current_dir().context("failed to resolve current directory")?,
+        codex_binary: "codex".to_owned(),
+        model: "gpt-5.4".to_owned(),
+    };
+
+    let mut index = 1;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let value = args
+            .get(index + 1)
+            .ok_or_else(|| anyhow::anyhow!("missing value after {flag}"))?;
+        match flag {
+            "--host" => options.host = value.clone(),
+            "--port" => {
+                options.port = value
+                    .parse::<u16>()
+                    .with_context(|| format!("invalid port: {value}"))?;
+            }
+            "--workspace" => options.workspace = PathBuf::from(value),
+            "--codex-binary" => options.codex_binary = value.clone(),
+            "--model" => options.model = value.clone(),
+            other => bail!("unknown demo fakechat option: {other}"),
+        }
+        index += 2;
+    }
+
+    Ok(CliCommand::Demo(DemoCommand::Fakechat(options)))
 }
 
 fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
@@ -206,8 +266,8 @@ fn parse_service_command(args: &[String]) -> Result<CliCommand> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CliCommand, SecretCommand, ServiceCommand, TelegramCommand, TelegramSmokeScenario,
-        parse_args,
+        CliCommand, DemoCommand, FakechatOptions, SecretCommand, ServiceCommand, TelegramCommand,
+        TelegramSmokeScenario, parse_args,
     };
     use std::path::PathBuf;
 
@@ -246,6 +306,48 @@ mod tests {
                 key: "bot".to_owned(),
                 value: "token".to_owned(),
             })
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_demo_fakechat_defaults() {
+        let parsed = parse_args(vec!["demo".to_owned(), "fakechat".to_owned()])
+            .expect("demo fakechat should parse");
+
+        let CliCommand::Demo(DemoCommand::Fakechat(options)) = parsed else {
+            panic!("expected demo fakechat command");
+        };
+        assert_eq!(options.host, "127.0.0.1");
+        assert_eq!(options.port, 8787);
+        assert_eq!(options.codex_binary, "codex");
+        assert_eq!(options.model, "gpt-5.4");
+    }
+
+    #[test]
+    fn parse_args_supports_demo_fakechat_options() {
+        assert_eq!(
+            parse_args(vec![
+                "demo".to_owned(),
+                "fakechat".to_owned(),
+                "--host".to_owned(),
+                "localhost".to_owned(),
+                "--port".to_owned(),
+                "9999".to_owned(),
+                "--workspace".to_owned(),
+                "C:/work".to_owned(),
+                "--codex-binary".to_owned(),
+                "codex-dev".to_owned(),
+                "--model".to_owned(),
+                "gpt-5.4-mini".to_owned(),
+            ])
+            .expect("demo fakechat with options should parse"),
+            CliCommand::Demo(DemoCommand::Fakechat(FakechatOptions {
+                host: "localhost".to_owned(),
+                port: 9999,
+                workspace: PathBuf::from("C:/work"),
+                codex_binary: "codex-dev".to_owned(),
+                model: "gpt-5.4-mini".to_owned(),
+            }))
         );
     }
 
