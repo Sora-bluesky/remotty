@@ -1,6 +1,6 @@
 {
   "name": "remotty",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Windows bridge that lets you talk to a local coding agent from Telegram.",
   "license": "MIT",
   "homepage": "https://github.com/Sora-bluesky/remotty#readme",
