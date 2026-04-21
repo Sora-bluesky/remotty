@@ -33,6 +33,24 @@ fn secret_surface_audit_script_succeeds_for_tracked_repo_state() -> Result<()> {
 }
 
 #[test]
+fn gitleaks_workflow_keeps_ci_secret_scan_enabled() -> Result<()> {
+    let workflow = std::fs::read_to_string(
+        repo_root()
+            .join(".github")
+            .join("workflows")
+            .join("gitleaks.yml"),
+    )?;
+
+    assert!(workflow.contains("gitleaks/gitleaks-action@v2"));
+    assert!(workflow.contains("fetch-depth: 0"));
+    assert!(workflow.contains("pull_request:"));
+    assert!(workflow.contains("push:"));
+    assert!(workflow.contains("GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"));
+
+    Ok(())
+}
+
+#[test]
 fn public_surface_audit_script_succeeds_for_tracked_repo_state() -> Result<()> {
     let script_path = repo_root().join("scripts").join("audit-public-surface.ps1");
     let output = Command::new(powershell())

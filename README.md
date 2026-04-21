@@ -238,6 +238,14 @@ checks_profile = "default"
 - Runtime state is ignored by `.gitignore`
 - Local secret-scanning hooks are recommended before commit and push
 
+Secret checks are intentionally layered:
+
+| Layer | Implementation | Scope |
+| --- | --- | --- |
+| pre-commit | Global `~/.git-hooks/pre-commit` with git-guard-style regex checks | staged diff |
+| CI | `.github/workflows/gitleaks.yml` with the Gitleaks GitHub Action | push and pull request changes |
+| Manual history scan | `gitleaks git --log-opts=--all --redact --verbose .` | full git history |
+
 ## CLI Compatibility
 
 The standalone Rust CLI still works and remains the compatibility path while the plugin surface matures.
