@@ -226,6 +226,7 @@ fn generate_release_notes_uses_backlog_env_override_when_no_argument_is_passed()
 fn bump_version_sync_only_updates_version_sources() -> Result<()> {
     let temp = TempDir::new()?;
     let cargo_toml_path = temp.path().join("Cargo.toml");
+    let cargo_lock_path = temp.path().join("Cargo.lock");
     let version_path = temp.path().join("VERSION");
 
     write_file(
@@ -237,6 +238,20 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+"#,
+    )?;
+    write_file(
+        &cargo_lock_path,
+        r#"[[package]]
+name = "remotty"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
+name = "clap"
+version = "4.5.0"
 "#,
     )?;
     write_file(&version_path, "0.1.0")?;
@@ -262,6 +277,9 @@ clap = { version = "4", features = ["derive"] }
     let cargo_toml = fs::read_to_string(&cargo_toml_path)?;
     assert!(cargo_toml.contains("version = \"0.1.8\""));
     assert!(cargo_toml.contains("clap = { version = \"4\", features = [\"derive\"] }"));
+    let cargo_lock = fs::read_to_string(&cargo_lock_path)?;
+    assert!(cargo_lock.contains("name = \"remotty\"\nversion = \"0.1.8\""));
+    assert!(cargo_lock.contains("name = \"clap\"\nversion = \"4.5.0\""));
     assert_eq!(fs::read_to_string(&version_path)?, "0.1.8");
 
     Ok(())
@@ -379,7 +397,7 @@ fn bump_version_checks_native_release_command_failures() -> Result<()> {
 
     for command in [
         "git switch -c $branch",
-        "git add VERSION Cargo.toml",
+        "git add VERSION Cargo.toml Cargo.lock",
         "git commit",
         "git push -u origin $branch",
         "gh pr create",

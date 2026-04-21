@@ -54,6 +54,41 @@ function Get-ReleaseTag {
     return "v$(Normalize-ReleaseVersion -Version $Version)"
 }
 
+function Set-CargoLockPackageVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CargoLockPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PackageName,
+        [Parameter(Mandatory = $true)]
+        [string]$Version
+    )
+
+    if (-not (Test-Path -LiteralPath $CargoLockPath)) {
+        return
+    }
+
+    $content = Get-Content -LiteralPath $CargoLockPath -Raw -Encoding UTF8
+    $normalized = $content -replace "`r`n", "`n"
+    $escapedName = [regex]::Escape($PackageName)
+    $pattern = "(?ms)(\[\[package\]\]\nname = `"$escapedName`"\nversion = `")([^`"]+)(`")"
+    $updated = [regex]::Replace(
+        $normalized,
+        $pattern,
+        {
+            param($match)
+            return $match.Groups[1].Value + $Version + $match.Groups[3].Value
+        },
+        1
+    )
+
+    if ($updated -eq $normalized) {
+        throw "Package '$PackageName' not found in Cargo.lock: $CargoLockPath"
+    }
+
+    [System.IO.File]::WriteAllText($CargoLockPath, $updated, [System.Text.UTF8Encoding]::new($false))
+}
+
 function ConvertFrom-YamlScalar {
     param(
         [AllowNull()]
