@@ -91,7 +91,7 @@ foreach ($item in $forbiddenPresentAnywhere) {
 }
 
 if ($failures.Count -gt 0) {
-    Write-Error ("public surface audit failed:`n- " + ($failures -join "`n- "))
+    [Console]::Error.WriteLine("public surface audit failed:`n- " + ($failures -join "`n- "))
     exit 1
 }
 

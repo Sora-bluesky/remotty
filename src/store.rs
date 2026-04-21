@@ -55,6 +55,16 @@ pub struct AuthorizedSender {
     pub source: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingAccessPairCode {
+    pub code: String,
+    pub sender_id: i64,
+    pub chat_id: i64,
+    pub chat_type: String,
+    pub issued_at_ms: i64,
+    pub expires_at_ms: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct LaneRecord {
     pub lane_id: String,
@@ -279,6 +289,16 @@ impl Store {
                 payload_json TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS telegram_access_pair_codes (
+                code TEXT PRIMARY KEY,
+                sender_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                chat_type TEXT NOT NULL,
+                issued_at_ms INTEGER NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                consumed_at_ms INTEGER
+            );
+
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lane_id TEXT NOT NULL,
@@ -338,6 +358,19 @@ impl Store {
                     resolved_at_ms INTEGER,
                     resolved_by_sender_id INTEGER,
                     telegram_message_id INTEGER
+                );
+                "#,
+            )?;
+            conn.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS telegram_access_pair_codes (
+                    code TEXT PRIMARY KEY,
+                    sender_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    chat_type TEXT NOT NULL,
+                    issued_at_ms INTEGER NOT NULL,
+                    expires_at_ms INTEGER NOT NULL,
+                    consumed_at_ms INTEGER
                 );
                 "#,
             )?;
@@ -446,6 +479,78 @@ impl Store {
             Ok(())
         })?;
         Ok(())
+    }
+
+    pub fn insert_access_pair_code(&self, code: &PendingAccessPairCode) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                INSERT INTO telegram_access_pair_codes(
+                    code, sender_id, chat_id, chat_type, issued_at_ms, expires_at_ms, consumed_at_ms
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)
+                ON CONFLICT(code) DO UPDATE SET
+                    sender_id = excluded.sender_id,
+                    chat_id = excluded.chat_id,
+                    chat_type = excluded.chat_type,
+                    issued_at_ms = excluded.issued_at_ms,
+                    expires_at_ms = excluded.expires_at_ms,
+                    consumed_at_ms = NULL
+                "#,
+                params![
+                    code.code,
+                    code.sender_id,
+                    code.chat_id,
+                    code.chat_type,
+                    code.issued_at_ms,
+                    code.expires_at_ms,
+                ],
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn consume_access_pair_code(
+        &self,
+        code: &str,
+        now_ms: i64,
+    ) -> Result<Option<PendingAccessPairCode>> {
+        self.with_conn(|conn| {
+            let updated = conn.execute(
+                r#"
+                UPDATE telegram_access_pair_codes
+                SET consumed_at_ms = ?2
+                WHERE code = ?1
+                  AND consumed_at_ms IS NULL
+                  AND expires_at_ms >= ?2
+                "#,
+                params![code, now_ms],
+            )?;
+            if updated == 0 {
+                return Ok(None);
+            }
+
+            conn.query_row(
+                r#"
+                SELECT code, sender_id, chat_id, chat_type, issued_at_ms, expires_at_ms
+                FROM telegram_access_pair_codes
+                WHERE code = ?1
+                "#,
+                params![code],
+                |row| {
+                    Ok(PendingAccessPairCode {
+                        code: row.get(0)?,
+                        sender_id: row.get(1)?,
+                        chat_id: row.get(2)?,
+                        chat_type: row.get(3)?,
+                        issued_at_ms: row.get(4)?,
+                        expires_at_ms: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+        })
+        .map_err(Into::into)
     }
 
     pub fn is_authorized_sender(&self, sender_id: i64) -> Result<bool> {

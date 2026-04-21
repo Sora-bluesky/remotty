@@ -73,6 +73,10 @@ async fn main() -> Result<()> {
             println!("{}", telegram_cli::pair(config_path).await?);
             Ok(())
         }
+        CliCommand::Telegram(TelegramCommand::AccessPair { code, config_path }) => {
+            println!("{}", telegram_cli::access_pair(config_path, &code).await?);
+            Ok(())
+        }
         CliCommand::Telegram(TelegramCommand::PolicyAllowlist { config_path }) => {
             println!("{}", telegram_cli::policy_allowlist(config_path)?);
             Ok(())

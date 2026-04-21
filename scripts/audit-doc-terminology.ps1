@@ -41,7 +41,7 @@ foreach ($path in ($targets | Sort-Object -Unique)) {
 }
 
 if ($failures.Count -gt 0) {
-    Write-Error ("documentation terminology audit failed:`n- " + ($failures -join "`n- "))
+    [Console]::Error.WriteLine("documentation terminology audit failed:`n- " + ($failures -join "`n- "))
     exit 1
 }
 

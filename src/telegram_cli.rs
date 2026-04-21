@@ -7,7 +7,7 @@ use rand::{Rng, distributions::Alphanumeric, rngs::OsRng};
 use rpassword as hidden_input;
 
 use crate::config::Config;
-use crate::store::{AuthorizedSender, Store};
+use crate::store::{AuthorizedSender, PendingAccessPairCode, Store};
 use crate::telegram::{PairingUpdate, TelegramClient};
 use crate::telegram_poller_guard::TelegramPollerGuard;
 use crate::windows_secret::{load_secret, store_secret};
@@ -31,7 +31,36 @@ pub async fn pair(config_path: impl AsRef<Path>) -> Result<String> {
     let pair_code = generate_pair_code();
     let issued_at_s = Utc::now().timestamp();
     println!("Send `/pair {pair_code}` to the bot within {PAIR_CODE_TTL_SECONDS} seconds.");
-    pair_with_code(config_path, &pair_code, issued_at_s).await
+    pair_with_code_until(
+        config_path,
+        &pair_code,
+        issued_at_s,
+        issued_at_s + PAIR_CODE_TTL_SECONDS,
+    )
+    .await
+}
+
+pub async fn access_pair(config_path: impl AsRef<Path>, pair_code: &str) -> Result<String> {
+    let now_s = Utc::now().timestamp();
+    let config = Config::load(config_path.as_ref())?;
+    ensure_storage_dirs(&config)?;
+    let store = Store::open(&config.storage.db_path)?;
+    if let Some(candidate) = store.consume_access_pair_code(pair_code, now_s * 1000)? {
+        ensure_private_access_pair_candidate(&candidate)?;
+        authorize_paired_sender(&store, candidate.sender_id)?;
+        return Ok(format!(
+            "Telegram sender `{}` を allowlist へ追加しました。chat_id=`{}`",
+            candidate.sender_id, candidate.chat_id
+        ));
+    }
+
+    pair_with_code_until(
+        config_path,
+        pair_code,
+        now_s - PAIR_CODE_TTL_SECONDS,
+        now_s + 30,
+    )
+    .await
 }
 
 #[doc(hidden)]
@@ -39,6 +68,21 @@ pub async fn pair_with_code(
     config_path: impl AsRef<Path>,
     pair_code: &str,
     issued_at_s: i64,
+) -> Result<String> {
+    pair_with_code_until(
+        config_path,
+        pair_code,
+        issued_at_s,
+        issued_at_s + PAIR_CODE_TTL_SECONDS,
+    )
+    .await
+}
+
+async fn pair_with_code_until(
+    config_path: impl AsRef<Path>,
+    pair_code: &str,
+    issued_after_s: i64,
+    deadline_s: i64,
 ) -> Result<String> {
     let config = Config::load(config_path.as_ref())?;
     ensure_storage_dirs(&config)?;
@@ -51,8 +95,14 @@ pub async fn pair_with_code(
     ensure_polling_mode_for_pairing(&telegram).await?;
     let bot = telegram.get_me().await?;
     let _poller_guard = TelegramPollerGuard::acquire(bot.id)?;
-    let candidate =
-        wait_for_pair_candidate(&telegram, bot.username.as_deref(), pair_code, issued_at_s).await?;
+    let candidate = wait_for_pair_candidate(
+        &telegram,
+        bot.username.as_deref(),
+        pair_code,
+        issued_after_s,
+        deadline_s,
+    )
+    .await?;
     println!(
         "Pairing target: sender_id=`{}`, chat_id=`{}`, chat_type=`{}`",
         candidate.sender_id, candidate.chat_id, candidate.chat_type
@@ -60,19 +110,68 @@ pub async fn pair_with_code(
     ensure_private_pair_candidate(&candidate)?;
 
     let store = Store::open(&config.storage.db_path)?;
-    store.upsert_authorized_sender(AuthorizedSender {
-        sender_id: candidate.sender_id,
-        platform: "telegram".to_owned(),
-        display_name: None,
-        status: "active".to_owned(),
-        approved_at_ms: Utc::now().timestamp_millis(),
-        source: "paired".to_owned(),
-    })?;
+    authorize_paired_sender(&store, candidate.sender_id)?;
 
     Ok(format!(
         "Telegram sender `{}` を allowlist へ追加しました。chat_id=`{}`",
         candidate.sender_id, candidate.chat_id
     ))
+}
+
+fn authorize_paired_sender(store: &Store, sender_id: i64) -> Result<()> {
+    store.upsert_authorized_sender(AuthorizedSender {
+        sender_id,
+        platform: "telegram".to_owned(),
+        display_name: None,
+        status: "active".to_owned(),
+        approved_at_ms: Utc::now().timestamp_millis(),
+        source: "paired".to_owned(),
+    })
+}
+
+fn ensure_private_access_pair_candidate(candidate: &PendingAccessPairCode) -> Result<()> {
+    if candidate.chat_type == "private" {
+        return Ok(());
+    }
+    bail!("pairing は `private` chat だけに対応しています。bot との DM でやり直してください。")
+}
+
+pub async fn send_access_pair_code(
+    config: &Config,
+    store: &Store,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    sender_id: i64,
+    chat_type: &str,
+) -> Result<()> {
+    if !config
+        .telegram
+        .allowed_chat_types
+        .iter()
+        .any(|kind| kind == "private")
+    {
+        return Ok(());
+    }
+
+    let pair_code = generate_pair_code();
+    let issued_at_ms = Utc::now().timestamp_millis();
+    store.insert_access_pair_code(&PendingAccessPairCode {
+        code: pair_code.clone(),
+        sender_id,
+        chat_id,
+        chat_type: chat_type.to_owned(),
+        issued_at_ms,
+        expires_at_ms: issued_at_ms + (PAIR_CODE_TTL_SECONDS * 1000),
+    })?;
+    telegram
+        .send_message(
+            chat_id,
+            &format!(
+                "remotty pairing code: `{pair_code}`\nRun `/remotty-access-pair {pair_code}` in Codex within {PAIR_CODE_TTL_SECONDS} seconds."
+            ),
+        )
+        .await?;
+    Ok(())
 }
 
 async fn ensure_polling_mode_for_pairing(telegram: &TelegramClient) -> Result<()> {
@@ -100,12 +199,8 @@ pub fn policy_allowlist(config_path: impl AsRef<Path>) -> Result<String> {
 }
 
 pub fn live_env_check() -> String {
-    let required = [
-        "LIVE_TELEGRAM_BOT_TOKEN",
-        "LIVE_TELEGRAM_CHAT_ID",
-        "LIVE_TELEGRAM_SENDER_ID",
-        "LIVE_WORKSPACE",
-    ];
+    let default_config = Path::new("bridge.toml");
+    let config = Config::load(default_config).ok();
     let optional = [
         "LIVE_CODEX_BIN",
         "LIVE_CODEX_PROFILE",
@@ -114,9 +209,19 @@ pub fn live_env_check() -> String {
     ];
 
     let mut lines = vec!["live environment check".to_owned(), "required:".to_owned()];
-    for key in required {
-        lines.push(format!("- `{key}`: {}", env_presence(key)));
-    }
+    lines.push(format!(
+        "- `LIVE_TELEGRAM_BOT_TOKEN`: {}",
+        live_token_presence(config.as_ref())
+    ));
+    lines.push(format!(
+        "- `LIVE_TELEGRAM_CHAT_ID`: {}",
+        live_chat_presence(config.as_ref())
+    ));
+    lines.push(format!(
+        "- `LIVE_TELEGRAM_SENDER_ID`: {}",
+        live_sender_presence(config.as_ref())
+    ));
+    lines.push(format!("- `LIVE_WORKSPACE`: {}", live_workspace_presence()));
     lines.push("optional:".to_owned());
     for key in optional {
         lines.push(format!("- `{key}`: {}", env_presence(key)));
@@ -194,6 +299,63 @@ fn env_presence(key: &str) -> &'static str {
     }
 }
 
+fn live_token_presence(config: Option<&Config>) -> &'static str {
+    if env_presence("LIVE_TELEGRAM_BOT_TOKEN") == "set" {
+        return "set";
+    }
+    match config {
+        Some(config) if load_secret(&config.telegram.token_secret_ref).is_ok() => "stored",
+        _ => "missing",
+    }
+}
+
+fn live_sender_presence(config: Option<&Config>) -> &'static str {
+    if env_presence("LIVE_TELEGRAM_SENDER_ID") == "set" {
+        return "set";
+    }
+    match inferred_sender_count(config) {
+        1 => "inferred",
+        0 => "missing",
+        _ => "ambiguous",
+    }
+}
+
+fn live_chat_presence(config: Option<&Config>) -> &'static str {
+    if env_presence("LIVE_TELEGRAM_CHAT_ID") == "set" {
+        return "set";
+    }
+    match inferred_sender_count(config) {
+        1 => "inferred",
+        0 => "missing",
+        _ => "ambiguous",
+    }
+}
+
+fn live_workspace_presence() -> &'static str {
+    if env_presence("LIVE_WORKSPACE") == "set" {
+        "set"
+    } else {
+        "default"
+    }
+}
+
+fn inferred_sender_count(config: Option<&Config>) -> usize {
+    let Some(config) = config else {
+        return 0;
+    };
+
+    let mut sender_ids = std::collections::BTreeSet::new();
+    sender_ids.extend(config.telegram.admin_sender_ids.iter().copied());
+    if config.storage.db_path.exists() {
+        if let Ok(store) = Store::open_read_only(&config.storage.db_path) {
+            if let Ok(senders) = store.list_active_authorized_senders() {
+                sender_ids.extend(senders.into_iter().map(|sender| sender.sender_id));
+            }
+        }
+    }
+    sender_ids.len()
+}
+
 fn ensure_private_pair_candidate(candidate: &PairCandidate) -> Result<()> {
     if candidate.chat_type == "private" {
         return Ok(());
@@ -209,11 +371,11 @@ async fn wait_for_pair_candidate(
     bot_username: Option<&str>,
     expected_code: &str,
     issued_after_s: i64,
+    deadline_s: i64,
 ) -> Result<PairCandidate> {
-    let deadline = issued_after_s + PAIR_CODE_TTL_SECONDS;
     let mut offset = None;
 
-    while Utc::now().timestamp() <= deadline {
+    while Utc::now().timestamp() <= deadline_s {
         let updates = telegram.get_pairing_updates(offset, 5).await?;
         if let Some(last_update_id) = updates.last().map(|update| update.update_id) {
             offset = Some(last_update_id + 1);

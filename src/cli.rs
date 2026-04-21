@@ -36,6 +36,10 @@ pub enum TelegramCommand {
     Pair {
         config_path: PathBuf,
     },
+    AccessPair {
+        code: String,
+        config_path: PathBuf,
+    },
     PolicyAllowlist {
         config_path: PathBuf,
     },
@@ -97,6 +101,18 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
                 config_path: PathBuf::from(value),
             }))
         }
+        [action, code] if action == "access-pair" => {
+            Ok(CliCommand::Telegram(TelegramCommand::AccessPair {
+                code: code.clone(),
+                config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+            }))
+        }
+        [action, code, flag, value] if action == "access-pair" && flag == "--config" => {
+            Ok(CliCommand::Telegram(TelegramCommand::AccessPair {
+                code: code.clone(),
+                config_path: PathBuf::from(value),
+            }))
+        }
         [group, action] if group == "policy" && action == "allowlist" => {
             Ok(CliCommand::Telegram(TelegramCommand::PolicyAllowlist {
                 config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
@@ -127,7 +143,7 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
             }))
         }
         _ => bail!(
-            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check | telegram smoke approval <accept|decline> [--config <path>]"
+            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram access-pair <code> [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check | telegram smoke approval <accept|decline> [--config <path>]"
         ),
     }
 }
@@ -278,6 +294,24 @@ mod tests {
             ])
             .expect("telegram pair should parse"),
             CliCommand::Telegram(TelegramCommand::Pair {
+                config_path: PathBuf::from("prod/bridge.toml"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_telegram_access_pair_with_config() {
+        assert_eq!(
+            parse_args(vec![
+                "telegram".to_owned(),
+                "access-pair".to_owned(),
+                "ABC123".to_owned(),
+                "--config".to_owned(),
+                "prod/bridge.toml".to_owned(),
+            ])
+            .expect("telegram access-pair should parse"),
+            CliCommand::Telegram(TelegramCommand::AccessPair {
+                code: "ABC123".to_owned(),
                 config_path: PathBuf::from("prod/bridge.toml"),
             })
         );

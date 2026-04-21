@@ -111,8 +111,7 @@ fn secret_surface_audit_rejects_live_assignments() -> Result<()> {
         !output.status.success(),
         "audit-secret-surface should reject live assignments"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("tracked assignment"));
+    assert_command_output_contains(&output, "tracked assignment");
 
     Ok(())
 }
@@ -147,8 +146,7 @@ fn secret_surface_audit_rejects_bot_token_like_values() -> Result<()> {
         !output.status.success(),
         "audit-secret-surface should reject token-like values"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("token-like value"));
+    assert_command_output_contains(&output, "token-like value");
 
     Ok(())
 }
@@ -183,8 +181,7 @@ fn secret_surface_audit_rejects_telegram_bot_urls_with_embedded_tokens() -> Resu
         !output.status.success(),
         "audit-secret-surface should reject Telegram bot URLs with embedded tokens"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("embedded token"));
+    assert_command_output_contains(&output, "embedded token");
 
     Ok(())
 }
@@ -226,8 +223,10 @@ fn doc_terminology_audit_rejects_release_history_terms() -> Result<()> {
         !output.status.success(),
         "audit-doc-terminology should reject release history terminology"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("scripts/release-history.psd1 contains banned term 'claude-opus'"));
+    assert_command_output_contains(
+        &output,
+        "release-history.psd1 contains banned term 'claude-opus'",
+    );
 
     Ok(())
 }
@@ -314,8 +313,7 @@ fn public_surface_audit_rejects_live_planning_files_present_in_repo() -> Result<
         !output.status.success(),
         "audit-public-surface should reject live planning files"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("forbidden live file present in repo"));
+    assert_command_output_contains(&output, "forbidden live file present in repo");
 
     Ok(())
 }
@@ -376,8 +374,7 @@ fn public_surface_audit_rejects_unexpected_tracked_task_files() -> Result<()> {
         !output.status.success(),
         "audit-public-surface should reject tracked task artifacts"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("unexpected tracked task file: tasks/notes.md"));
+    assert_command_output_contains(&output, "unexpected tracked task file: tasks/notes.md");
 
     Ok(())
 }
@@ -437,8 +434,10 @@ fn public_surface_audit_rejects_release_doc_review_records() -> Result<()> {
         !output.status.success(),
         "audit-public-surface should reject release doc review records"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("forbidden tracked file: .github/release-doc-reviews"));
+    assert_command_output_contains(
+        &output,
+        "forbidden tracked file: .github/release-doc-reviews",
+    );
 
     Ok(())
 }
@@ -499,8 +498,8 @@ fn public_surface_audit_rejects_live_planning_files_anywhere_in_repo() -> Result
         !output.status.success(),
         "audit-public-surface should reject in-repo planning roots"
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("forbidden live file present in repo: private-planning"));
+    assert_command_output_contains(&output, "forbidden live file present in repo");
+    assert_command_output_contains(&output, "private-planning");
 
     Ok(())
 }
@@ -533,4 +532,24 @@ fn git_add(path: &std::path::Path, file: &str) -> Result<()> {
     );
 
     Ok(())
+}
+
+fn assert_command_output_contains(output: &std::process::Output, expected: &str) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let output_text = format!("{stdout}{stderr}");
+    let normalized_output = normalize_command_output(&output_text);
+    let normalized_expected = normalize_command_output(expected);
+    assert!(
+        normalized_output.contains(&normalized_expected),
+        "expected command output to contain {expected:?}\nstatus: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status
+    );
+}
+
+fn normalize_command_output(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_whitespace() && *character != '|')
+        .collect()
 }

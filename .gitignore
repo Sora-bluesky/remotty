@@ -3,6 +3,7 @@
 /state/
 /.idea/
 /.vscode/
+/bridge.local.toml
 
 # Internal handoff artifacts must stay out of version control.
 /docs/handoff.md
