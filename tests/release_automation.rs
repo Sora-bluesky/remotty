@@ -374,6 +374,41 @@ fn bump_version_runs_public_audits_before_release_workflow() -> Result<()> {
 }
 
 #[test]
+fn bump_version_checks_native_release_command_failures() -> Result<()> {
+    let script = fs::read_to_string(repo_root().join("scripts").join("bump-version.ps1"))?;
+
+    for command in [
+        "git switch -c $branch",
+        "git add VERSION Cargo.toml",
+        "git commit",
+        "git push -u origin $branch",
+        "gh pr create",
+        "gh pr checks $prNumber --watch",
+        "gh pr merge $prNumber",
+        "git switch main",
+        "git pull --ff-only origin main",
+        "git tag $tag",
+        "git push origin $tag",
+        "gh release create $tag",
+    ] {
+        let command_position = script
+            .find(command)
+            .with_context(|| format!("missing native command: {command}"))?;
+        let assertion = format!("Assert-NativeSuccess \"{command}\"");
+        let assertion_position = script
+            .find(&assertion)
+            .with_context(|| format!("missing native success assertion: {assertion}"))?;
+
+        assert!(
+            command_position < assertion_position,
+            "success assertion should follow native command: {command}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn release_preflight_allows_missing_title_map_when_backlog_exists() -> Result<()> {
     let temp = TempDir::new()?;
     let backlog_path = temp.path().join("backlog.yaml");

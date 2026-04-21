@@ -23,6 +23,17 @@ $backlogPath = Resolve-RemottyExternalPlanningFilePath -EnvironmentVariable 'REM
 $roadmapPath = Resolve-RemottyExternalPlanningFilePath -EnvironmentVariable 'REMOTTY_ROADMAP_PATH' -DefaultFileName 'ROADMAP.md'
 $titlePath = Resolve-RemottyExternalPlanningFilePath -EnvironmentVariable 'REMOTTY_ROADMAP_TITLE_JA_PATH' -DefaultFileName 'roadmap-title-ja.psd1'
 
+function Assert-NativeSuccess {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw ("{0} failed with exit code {1}" -f $Command, $LASTEXITCODE)
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
     if (-not (Test-Path -LiteralPath $versionFile)) {
         throw "VERSION file not found: $versionFile"
@@ -54,6 +65,7 @@ if (-not $SyncOnly) {
 
         $branch = "release/$tag"
         git switch -c $branch | Out-Null
+        Assert-NativeSuccess "git switch -c $branch"
     } finally {
         Pop-Location
     }
@@ -70,22 +82,33 @@ if ($SyncOnly) {
 Push-Location $resolvedRepoRoot
 try {
     git add VERSION Cargo.toml
+    Assert-NativeSuccess "git add VERSION Cargo.toml"
     git commit -m "chore: bump version to $normalizedVersion" | Out-Null
+    Assert-NativeSuccess "git commit"
     git push -u origin $branch | Out-Null
+    Assert-NativeSuccess "git push -u origin $branch"
 
     $prUrl = gh pr create --base main --head $branch --title "chore: bump version to $normalizedVersion" --body "Automated release via `scripts/bump-version.ps1 -Version $normalizedVersion`."
+    Assert-NativeSuccess "gh pr create"
     $prNumber = if ($prUrl -match '/(\d+)$') { $Matches[1] } else { $prUrl }
     gh pr checks $prNumber --watch | Out-Null
+    Assert-NativeSuccess "gh pr checks $prNumber --watch"
     gh pr merge $prNumber --merge --delete-branch | Out-Null
+    Assert-NativeSuccess "gh pr merge $prNumber"
 
     git switch main | Out-Null
+    Assert-NativeSuccess "git switch main"
     git pull --ff-only origin main | Out-Null
+    Assert-NativeSuccess "git pull --ff-only origin main"
     git tag $tag
+    Assert-NativeSuccess "git tag $tag"
     git push origin $tag | Out-Null
+    Assert-NativeSuccess "git push origin $tag"
 
     $notesPath = Join-Path $resolvedRepoRoot 'release\release-body.md'
     & $generateNotesScript -Version $normalizedVersion -OutputPath $notesPath -RepoRoot $resolvedRepoRoot
     gh release create $tag --title $tag --notes-file $notesPath --verify-tag --latest | Out-Null
+    Assert-NativeSuccess "gh release create $tag"
 
     $updatedTaskIds = Update-ReleaseBacklogStatus -BacklogPath $backlogPath -Version $normalizedVersion
     if ($updatedTaskIds.Count -gt 0) {
