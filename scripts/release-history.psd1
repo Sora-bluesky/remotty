@@ -150,5 +150,27 @@
                 "Updated public setup docs to use the GitHub Release package before npm registry publishing."
             )
         }
+        @{
+            Version = "0.1.17"
+            Commit = "60ab6ca122a4d9a2eb48ee3e53dd28080b310dfb"
+            Title = "Manual Telegram smoke checks"
+            Notes = @(
+                "Added ``telegram live-env-check --config <path>`` to validate saved credentials, paired senders, live workspace readiness, and Telegram webhook state before manual smoke runs."
+                "Improved polling conflict errors with Windows process discovery and stop-command hints."
+                "Updated plugin smoke commands to favor the installed ``remotty`` command path."
+                "Prepared the Telegram setup docs and Codex Remote connections positioning for the next release."
+            )
+        }
+        @{
+            Version = "0.1.18"
+            Commit = "9b93f50f3cdf41fc6619ac287b9ef501d1b5c22b"
+            Title = "Telegram quickstart documentation"
+            Notes = @(
+                "Added English and Japanese Telegram quickstart guides covering BotFather setup, installation, bridge startup, pairing, allowlists, and troubleshooting."
+                "Linked the quickstart from both README files so new users have a shorter setup path."
+                "Clarified that Codex Remote connections are for working on SSH targets while remotty is a Telegram bridge into the current working environment."
+                "Published the quickstart release with both stable and versioned npm tarballs attached to GitHub Releases."
+            )
+        }
     )
 }
