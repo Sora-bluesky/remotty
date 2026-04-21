@@ -50,6 +50,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     steps:
       - name: Checkout
@@ -67,6 +69,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          registry-url: https://registry.npmjs.org
 
       - name: Run public release audits
         shell: pwsh
@@ -93,3 +96,9 @@ jobs:
         with:
           body_path: release/release-body.md
           files: release/*
+
+      - name: Publish npm package
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+        run: npm publish release/remotty-*.tgz --access public

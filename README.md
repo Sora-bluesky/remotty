@@ -33,11 +33,9 @@ This project is best for:
 - solo builders who want a lightweight remote control surface
 - developers who prefer local execution over hosted automation
 
-Today, the preferred path is plugin-first, with the standalone CLI kept as a compatibility layer. If you are comfortable with PowerShell and basic Telegram bot setup, you should be able to get started.
+If you are comfortable with PowerShell and basic Telegram bot setup, you should be able to get started.
 
-## Plugin-First Setup
-
-The supported setup path is now plugin-first.
+## Configure With the Plugin
 
 Use the local `remotty` plugin to:
 
@@ -130,7 +128,7 @@ Run the plugin command with that code:
 
 The command matches the Telegram sender, shows the target `sender_id` and `chat_id`, and adds the sender to the local allowlist automatically.
 
-The older `/remotty-pair` command still works as a compatibility path.
+After pairing, continue to the allowlist check.
 
 ### 6. Lock access to the allowlist
 
@@ -162,7 +160,7 @@ If you already use a named Codex profile, you can also set `codex.profile`. Othe
 ```
 
 If you prefer the CLI directly, `remotty --config bridge.toml` starts the foreground bridge.
-In a source checkout, `cargo run -- --config bridge.toml` still works as a compatibility path.
+In a source checkout, use `cargo run -- --config bridge.toml`.
 
 ### 9. Open your bot in Telegram
 
@@ -274,10 +272,9 @@ Secret checks are intentionally layered:
 | CI | `.github/workflows/gitleaks.yml` with the Gitleaks GitHub Action | push and pull request changes |
 | Manual history scan | `gitleaks git --log-opts=--all --redact --verbose .` | full git history |
 
-## CLI Compatibility
+## CLI Commands
 
 The npm-installed `remotty` command is the packaged CLI path.
-The standalone Rust CLI still works from a source checkout.
 
 Common equivalents are:
 
@@ -291,7 +288,7 @@ Common equivalents are:
 - plugin `/remotty-smoke-approval-accept` -> `remotty telegram smoke approval accept --config bridge.toml`
 - plugin `/remotty-smoke-approval-decline` -> `remotty telegram smoke approval decline --config bridge.toml`
 
-If you keep your config in a non-default path, pass the same `--config <path>` to the compatibility CLI commands.
+If you keep your config in a non-default path, pass the same `--config <path>` to the CLI commands.
 
 ## Run as a Windows Service
 
@@ -328,14 +325,25 @@ pwsh -NoProfile -File scripts/audit-secret-surface.ps1
 
 ### npm registry publish
 
-GitHub Releases include `remotty.tgz` and a versioned tarball such as `remotty-0.1.15.tgz`.
-Publishing to the npm registry is a separate maintainer step:
+GitHub Releases include `remotty.tgz` and a versioned tarball such as `remotty-0.1.19.tgz`.
+The release workflow publishes the versioned tarball to the npm registry when the repository has an Actions secret named `NPM_TOKEN`.
+Create the token from an npm account that owns the `remotty` package, then add it in GitHub under **Settings > Secrets and variables > Actions > New repository secret**.
+
+Use this secret name:
+
+```text
+NPM_TOKEN
+```
+
+Without that secret, the GitHub Release still succeeds and npm publishing is skipped.
+
+For a manual publish from a maintainer machine, use:
 
 ```powershell
 npm publish .\release\remotty.tgz
 ```
 
-Run this only from an npm account that owns the `remotty` package.
+Run either publish path only from an npm account that owns the `remotty` package.
 
 ### Optional manual smoke
 

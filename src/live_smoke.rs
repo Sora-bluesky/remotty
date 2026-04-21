@@ -599,7 +599,27 @@ fn ensure_child_alive(child: &mut ChildGuard) -> Result<()> {
 }
 
 fn toml_string(value: &str) -> String {
-    format!("\"{}\"", value.escape_default())
+    use std::fmt::Write;
+
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\u{08}' => escaped.push_str("\\b"),
+            '\t' => escaped.push_str("\\t"),
+            '\n' => escaped.push_str("\\n"),
+            '\u{0c}' => escaped.push_str("\\f"),
+            '\r' => escaped.push_str("\\r"),
+            ch if ch <= '\u{1f}' || ch == '\u{7f}' => {
+                let _ = write!(&mut escaped, "\\u{:04X}", ch as u32);
+            }
+            ch => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 struct ChildGuard {
@@ -634,9 +654,20 @@ impl Drop for ChildGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::{LIVE_WORKSPACE_MARKER, validated_live_workspace};
+    use super::{LIVE_WORKSPACE_MARKER, toml_string, validated_live_workspace};
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn toml_string_keeps_non_ascii_valid_for_toml() {
+        let original = "必要な確認を進めて、\"止まる\"理由\\path\n";
+        let encoded = toml_string(original);
+
+        assert!(!encoded.contains("\\u{"));
+        let parsed: toml::Value =
+            toml::from_str(&format!("value = {encoded}")).expect("string should parse as toml");
+        assert_eq!(parsed["value"].as_str(), Some(original));
+    }
 
     #[test]
     fn validated_live_workspace_requires_marker_file() {
