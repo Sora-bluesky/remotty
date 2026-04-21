@@ -234,6 +234,9 @@ fn bump_version_sync_only_updates_version_sources() -> Result<()> {
 name = "remotty"
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
 "#,
     )?;
     write_file(&version_path, "0.1.0")?;
@@ -258,6 +261,7 @@ edition = "2024"
 
     let cargo_toml = fs::read_to_string(&cargo_toml_path)?;
     assert!(cargo_toml.contains("version = \"0.1.8\""));
+    assert!(cargo_toml.contains("clap = { version = \"4\", features = [\"derive\"] }"));
     assert_eq!(fs::read_to_string(&version_path)?, "0.1.8");
 
     Ok(())

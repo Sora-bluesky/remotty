@@ -244,7 +244,12 @@ function Set-CargoPackageVersion {
     )
 
     $content = Get-Content -LiteralPath $CargoTomlPath -Raw -Encoding UTF8
-    $updated = $content -replace '(?m)^version = "[^"]+"$', ('version = "' + $Version + '"')
+    $updated = [regex]::Replace(
+        $content,
+        '(?ms)(^\[package\]\s+.*?^version\s*=\s*)"[^"]+"',
+        ('$1"' + $Version + '"'),
+        1
+    )
     if ($updated -eq $content) {
         throw "Could not update version line in $CargoTomlPath"
     }
