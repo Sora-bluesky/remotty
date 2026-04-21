@@ -13,10 +13,9 @@ use crate::store::{
 };
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
-    TelegramControlCommand,
+    TelegramControlCommand, TelegramPoller,
 };
 use crate::telegram_cli::send_access_pair_code;
-use crate::telegram_poller_guard::TelegramPollerGuard;
 use crate::windows_secret::load_secret;
 
 const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
@@ -146,8 +145,7 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
         config.telegram.api_base_url.clone(),
         config.telegram.file_base_url.clone(),
     );
-    let bot = telegram.get_me().await?;
-    let _poller_guard = TelegramPollerGuard::acquire(bot.id)?;
+    let poller = TelegramPoller::acquire(telegram.clone()).await?;
     let store = Store::open(&config.storage.db_path)?;
     seed_admin_senders(&store, &config.telegram.admin_sender_ids)?;
     let codex = CodexRunner::new(config.codex.clone());
@@ -161,7 +159,7 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
                 info!("shutdown requested");
                 break;
             }
-            result = telegram.get_updates(offset, config.service.poll_timeout_sec) => result?,
+            result = poller.get_updates(offset, config.service.poll_timeout_sec) => result?,
         };
         for update in updates {
             offset = Some(update.update_id + 1);

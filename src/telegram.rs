@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::telegram_poller_guard::TelegramPollerGuard;
+
 #[derive(Clone)]
 pub struct TelegramClient {
     http: Client,
@@ -198,6 +200,74 @@ pub struct TelegramWebhookInfo {
     pub url: String,
 }
 
+pub struct TelegramPoller {
+    client: TelegramClient,
+    bot: TelegramBotInfo,
+    _guard: TelegramPollerGuard,
+}
+
+impl TelegramPoller {
+    pub async fn acquire(client: TelegramClient) -> Result<Self> {
+        let bot = client.get_me().await?;
+        let guard = TelegramPollerGuard::acquire(bot.id)?;
+        Ok(Self {
+            client,
+            bot,
+            _guard: guard,
+        })
+    }
+
+    pub fn bot(&self) -> &TelegramBotInfo {
+        &self.bot
+    }
+
+    pub async fn get_updates(
+        &self,
+        offset: Option<i64>,
+        timeout_sec: u64,
+    ) -> Result<Vec<IncomingMessage>> {
+        let response = self
+            .client
+            .request_updates(
+                offset,
+                timeout_sec,
+                &["message", "edited_message", "callback_query"],
+            )
+            .await?;
+        parse_updates(response)
+    }
+
+    pub async fn get_pairing_updates(
+        &self,
+        offset: Option<i64>,
+        timeout_sec: u64,
+    ) -> Result<Vec<PairingUpdate>> {
+        let response = self
+            .client
+            .request_updates(offset, timeout_sec, &["message"])
+            .await?;
+        parse_pairing_updates(response)
+    }
+
+    pub async fn drain_pending_updates(&self) -> Result<()> {
+        let mut offset = None;
+        loop {
+            let response = self
+                .client
+                .request_updates(offset, 0, &["message", "edited_message", "callback_query"])
+                .await?;
+            if !response.ok {
+                bail!("telegram getUpdates returned ok=false");
+            }
+            let Some(last_update_id) = response.result.iter().map(|update| update.update_id).max()
+            else {
+                return Ok(());
+            };
+            offset = Some(last_update_id + 1);
+        }
+    }
+}
+
 impl TelegramClient {
     pub fn new(token: String) -> Self {
         Self::with_base_urls(
@@ -275,49 +345,6 @@ impl TelegramClient {
             bail!("telegram deleteWebhook returned ok=false");
         }
         Ok(())
-    }
-
-    pub async fn get_updates(
-        &self,
-        offset: Option<i64>,
-        timeout_sec: u64,
-    ) -> Result<Vec<IncomingMessage>> {
-        let response = self
-            .request_updates(
-                offset,
-                timeout_sec,
-                &["message", "edited_message", "callback_query"],
-            )
-            .await?;
-        parse_updates(response)
-    }
-
-    pub async fn get_pairing_updates(
-        &self,
-        offset: Option<i64>,
-        timeout_sec: u64,
-    ) -> Result<Vec<PairingUpdate>> {
-        let response = self
-            .request_updates(offset, timeout_sec, &["message"])
-            .await?;
-        parse_pairing_updates(response)
-    }
-
-    pub async fn drain_pending_updates(&self) -> Result<()> {
-        let mut offset = None;
-        loop {
-            let response = self
-                .request_updates(offset, 0, &["message", "edited_message", "callback_query"])
-                .await?;
-            if !response.ok {
-                bail!("telegram getUpdates returned ok=false");
-            }
-            let Some(last_update_id) = response.result.iter().map(|update| update.update_id).max()
-            else {
-                return Ok(());
-            };
-            offset = Some(last_update_id + 1);
-        }
     }
 
     pub async fn send_message(&self, chat_id: i64, text: &str) -> Result<SendMessageResult> {

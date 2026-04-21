@@ -8,8 +8,7 @@ use rpassword as hidden_input;
 
 use crate::config::Config;
 use crate::store::{AuthorizedSender, PendingAccessPairCode, Store};
-use crate::telegram::{PairingUpdate, TelegramClient};
-use crate::telegram_poller_guard::TelegramPollerGuard;
+use crate::telegram::{PairingUpdate, TelegramClient, TelegramPoller};
 use crate::windows_secret::{load_secret, store_secret};
 
 const DEFAULT_SECRET_REF: &str = "remotty-telegram-bot";
@@ -93,11 +92,10 @@ async fn pair_with_code_until(
         config.telegram.file_base_url.clone(),
     );
     ensure_polling_mode_for_pairing(&telegram).await?;
-    let bot = telegram.get_me().await?;
-    let _poller_guard = TelegramPollerGuard::acquire(bot.id)?;
+    let poller = TelegramPoller::acquire(telegram).await?;
     let candidate = wait_for_pair_candidate(
-        &telegram,
-        bot.username.as_deref(),
+        &poller,
+        poller.bot().username.as_deref(),
         pair_code,
         issued_after_s,
         deadline_s,
@@ -367,7 +365,7 @@ fn ensure_private_pair_candidate(candidate: &PairCandidate) -> Result<()> {
 }
 
 async fn wait_for_pair_candidate(
-    telegram: &TelegramClient,
+    poller: &TelegramPoller,
     bot_username: Option<&str>,
     expected_code: &str,
     issued_after_s: i64,
@@ -376,7 +374,7 @@ async fn wait_for_pair_candidate(
     let mut offset = None;
 
     while Utc::now().timestamp() <= deadline_s {
-        let updates = telegram.get_pairing_updates(offset, 5).await?;
+        let updates = poller.get_pairing_updates(offset, 5).await?;
         if let Some(last_update_id) = updates.last().map(|update| update.update_id) {
             offset = Some(last_update_id + 1);
         }

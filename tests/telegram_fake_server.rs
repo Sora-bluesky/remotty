@@ -6,6 +6,7 @@ use chrono::Utc;
 use remotty::store::{PendingAccessPairCode, Store};
 use remotty::telegram::{
     TelegramAttachment, TelegramAttachmentKind, TelegramClient, TelegramControlCommand,
+    TelegramPoller,
 };
 use remotty::telegram_cli::{access_pair, pair_with_code};
 use serial_test::serial;
@@ -13,6 +14,7 @@ use std::fs;
 use tempfile::tempdir;
 
 #[tokio::test]
+#[serial]
 async fn telegram_client_routes_updates_and_callback_operations_to_fake_server() -> Result<()> {
     let server = fake_telegram::FakeTelegramServer::start("test-token").await?;
     server
@@ -32,7 +34,8 @@ async fn telegram_client_routes_updates_and_callback_operations_to_fake_server()
     assert_eq!(bot.id, 77_000);
     assert_eq!(bot.username.as_deref(), Some("remotty_test_bot"));
 
-    let updates = client.get_updates(None, 0).await?;
+    let poller = TelegramPoller::acquire(client.clone()).await?;
+    let updates = poller.get_updates(None, 0).await?;
     assert_eq!(updates.len(), 2);
     assert_eq!(updates[0].text, "hello from fake telegram");
     assert_eq!(
@@ -47,6 +50,7 @@ async fn telegram_client_routes_updates_and_callback_operations_to_fake_server()
     client
         .answer_callback_query("callback-2", Some("processed"))
         .await?;
+    drop(poller);
 
     let sent = server.sent_messages().await;
     assert_eq!(sent.len(), 1);
@@ -68,6 +72,7 @@ async fn telegram_client_routes_updates_and_callback_operations_to_fake_server()
 }
 
 #[tokio::test]
+#[serial]
 async fn telegram_client_handles_webhook_and_attachment_download_against_fake_server() -> Result<()>
 {
     let server = fake_telegram::FakeTelegramServer::start("test-token").await?;
@@ -91,8 +96,10 @@ async fn telegram_client_handles_webhook_and_attachment_download_against_fake_se
     assert_eq!(delete_calls.len(), 1);
     assert!(!delete_calls[0].drop_pending_updates);
 
-    let pairing = client.get_pairing_updates(None, 0).await?;
+    let poller = TelegramPoller::acquire(client.clone()).await?;
+    let pairing = poller.get_pairing_updates(None, 0).await?;
     assert!(pairing.is_empty());
+    drop(poller);
 
     let saved = client
         .save_attachment(

@@ -12,8 +12,7 @@ use tokio::time::sleep;
 
 use crate::config::Config;
 use crate::store::Store;
-use crate::telegram::TelegramClient;
-use crate::telegram_poller_guard::TelegramPollerGuard;
+use crate::telegram::{TelegramClient, TelegramPoller};
 use crate::windows_secret::load_secret;
 
 const LIVE_WORKSPACE_MARKER: &str = ".remotty-live-smoke-ok";
@@ -45,10 +44,9 @@ pub async fn run_smoke(config_path: impl AsRef<Path>, scenario: SmokeScenario) -
         base_config.telegram.api_base_url.clone(),
         base_config.telegram.file_base_url.clone(),
     );
-    let bot = telegram.get_me().await?;
-    let guard = TelegramPollerGuard::acquire(bot.id)?;
+    let poller = TelegramPoller::acquire(telegram.clone()).await?;
     ensure_polling_mode(&telegram).await?;
-    drop(guard);
+    drop(poller);
 
     let temp = tempdir()?;
     let config_path = write_live_config(temp.path(), &base_config, &live)?;
