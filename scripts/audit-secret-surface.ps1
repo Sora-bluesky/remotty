@@ -88,7 +88,7 @@ foreach ($path in $trackedFiles) {
 }
 
 if ($failures.Count -gt 0) {
-    Write-Error ("secret surface audit failed:`n- " + ($failures -join "`n- "))
+    [Console]::Error.WriteLine("secret surface audit failed:`n- " + ($failures -join "`n- "))
     exit 1
 }
 

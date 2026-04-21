@@ -13,6 +13,9 @@ use crate::app_server::{AppServerClient, CodexApprovalRequest};
 use crate::config::{CodexConfig, CodexTransport, WorkspaceConfig};
 use crate::store::ApprovalRequestRecord;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 #[derive(Debug, Clone)]
 pub struct CodexOutcome {
     pub session_id: Option<String>,
@@ -182,12 +185,16 @@ impl CodexRunner {
     }
 
     async fn run_command(&self, args: Vec<String>, cwd: &std::path::Path) -> Result<CodexOutcome> {
-        let mut child = Command::new(&self.config.binary)
+        let mut command = Command::new(&self.config.binary);
+        command
             .args(args)
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        hide_child_window(&mut command);
+
+        let mut child = command
             .spawn()
             .with_context(|| format!("failed to spawn codex in {}", cwd.display()))?;
 
@@ -211,28 +218,12 @@ impl CodexRunner {
                     }
                 };
 
-                if session_id.is_none() {
-                    session_id = parsed
-                        .get("session_id")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned);
-                }
-
-                if let Some(msg) = parsed.get("msg") {
-                    if msg.get("type").and_then(Value::as_str) == Some("task_complete") {
-                        if let Some(text) = msg.get("last_agent_message").and_then(Value::as_str) {
-                            last_message = text.to_owned();
-                        }
-                    }
-                    if let Some(kind) = msg.get("type").and_then(Value::as_str) {
-                        if matches!(
-                            kind,
-                            "exec_approval_request" | "apply_patch_approval_request"
-                        ) {
-                            approval_pending = true;
-                        }
-                    }
-                }
+                parse_exec_stdout_event(
+                    &parsed,
+                    &mut session_id,
+                    &mut last_message,
+                    &mut approval_pending,
+                );
             }
             Ok::<_, anyhow::Error>((session_id, last_message, approval_pending))
         });
@@ -272,9 +263,59 @@ impl CodexRunner {
     }
 }
 
+fn parse_exec_stdout_event(
+    parsed: &Value,
+    session_id: &mut Option<String>,
+    last_message: &mut String,
+    approval_pending: &mut bool,
+) {
+    if session_id.is_none() {
+        *session_id = parsed
+            .get("session_id")
+            .or_else(|| parsed.get("thread_id"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+    }
+
+    if parsed.get("type").and_then(Value::as_str) == Some("item.completed") {
+        if let Some(item) = parsed.get("item") {
+            if item.get("type").and_then(Value::as_str) == Some("agent_message") {
+                if let Some(text) = item.get("text").and_then(Value::as_str) {
+                    *last_message = text.to_owned();
+                }
+            }
+        }
+    }
+
+    if let Some(msg) = parsed.get("msg") {
+        if msg.get("type").and_then(Value::as_str) == Some("task_complete") {
+            if let Some(text) = msg.get("last_agent_message").and_then(Value::as_str) {
+                *last_message = text.to_owned();
+            }
+        }
+        if let Some(kind) = msg.get("type").and_then(Value::as_str) {
+            if matches!(
+                kind,
+                "exec_approval_request" | "apply_patch_approval_request"
+            ) {
+                *approval_pending = true;
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn hide_child_window(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_child_window(_command: &mut Command) {}
+
 #[cfg(test)]
 mod tests {
-    use super::{CodexRequest, CodexRunner};
+    use super::{CodexRequest, CodexRunner, parse_exec_stdout_event};
+    use serde_json::json;
     use std::path::PathBuf;
 
     use crate::config::{CodexConfig, CodexTransport, LaneMode, WorkspaceConfig};
@@ -343,6 +384,39 @@ mod tests {
             .expect("missing --profile");
 
         assert_eq!(args.get(profile_index + 1), Some(&"work".to_owned()));
+    }
+
+    #[test]
+    fn parses_current_exec_json_agent_message() {
+        let mut session_id = None;
+        let mut last_message = String::new();
+        let mut approval_pending = false;
+
+        parse_exec_stdout_event(
+            &json!({
+                "type": "thread.started",
+                "thread_id": "thread-1"
+            }),
+            &mut session_id,
+            &mut last_message,
+            &mut approval_pending,
+        );
+        parse_exec_stdout_event(
+            &json!({
+                "type": "item.completed",
+                "item": {
+                    "type": "agent_message",
+                    "text": "こんにちは。何から始めますか？"
+                }
+            }),
+            &mut session_id,
+            &mut last_message,
+            &mut approval_pending,
+        );
+
+        assert_eq!(session_id.as_deref(), Some("thread-1"));
+        assert_eq!(last_message, "こんにちは。何から始めますか？");
+        assert!(!approval_pending);
     }
 
     fn workspace() -> WorkspaceConfig {

@@ -15,6 +15,7 @@ use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
     TelegramControlCommand,
 };
+use crate::telegram_cli::send_access_pair_code;
 use crate::telegram_poller_guard::TelegramPollerGuard;
 use crate::windows_secret::load_secret;
 
@@ -185,7 +186,25 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
 
             let sender_id = match authorize_sender_for_update(&store, &update)? {
                 Some(sender_id) => sender_id,
-                None => continue,
+                None => {
+                    if update.chat_type == "private" {
+                        if let Some(sender_id) = update.sender_id {
+                            if let Err(error) = send_access_pair_code(
+                                &config,
+                                &store,
+                                &telegram,
+                                update.chat_id,
+                                sender_id,
+                                &update.chat_type,
+                            )
+                            .await
+                            {
+                                warn!("failed to send pairing code: {error:#}");
+                            }
+                        }
+                    }
+                    continue;
+                }
             };
 
             let chat_id = update.chat_id;

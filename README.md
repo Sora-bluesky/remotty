@@ -42,7 +42,7 @@ The supported setup path is now plugin-first.
 Use the local `remotty` plugin to:
 
 - save the bot token without echoing it in the terminal
-- pair your Telegram account without looking up `message.from.id`
+- pair your Telegram account from a bot-issued code
 - start, stop, and inspect the bridge from one place
 
 The Rust bridge still runs as the local core. The plugin is the user-facing layer.
@@ -92,13 +92,18 @@ The command asks for the Telegram bot token without printing it back to the term
 
 ### 5. Pair your Telegram account
 
-Make sure the bridge is not already running. Then run:
+Make sure the bridge is running. Then send any message to the bot from the Telegram account you want to allow.
+The bot replies with a `remotty pairing code`.
+
+Run the plugin command with that code:
 
 ```text
-/remotty-pair
+/remotty-access-pair <code>
 ```
 
-The command prints a short one-time code in the local terminal. Send `/pair <code>` to the bot from the Telegram account you want to allow. The command then waits for that exact message, shows the target `sender_id` and `chat_id`, and adds the sender to the local allowlist automatically.
+The command matches the Telegram sender, shows the target `sender_id` and `chat_id`, and adds the sender to the local allowlist automatically.
+
+The older `/remotty-pair` command still works as a compatibility path.
 
 ### 6. Lock access to the allowlist
 
@@ -240,6 +245,7 @@ The standalone Rust CLI still works and remains the compatibility path while the
 Common equivalents are:
 
 - plugin `/remotty-configure` -> `cargo run -- telegram configure --config bridge.toml`
+- plugin `/remotty-access-pair <code>` -> `cargo run -- telegram access-pair <code> --config bridge.toml`
 - plugin `/remotty-pair` -> `cargo run -- telegram pair --config bridge.toml`
 - plugin `/remotty-policy-allowlist` -> `cargo run -- telegram policy allowlist --config bridge.toml`
 - plugin `/remotty-status` -> `cargo run -- service status`
@@ -283,18 +289,24 @@ pwsh -NoProfile -File scripts/audit-secret-surface.ps1
 ### Optional manual smoke
 
 The manual smoke run is opt-in and does not run in CI.
-Keep the `LIVE_*` values in the current shell only. Do not write them into tracked files.
-Do not paste the values into chat, and do not share terminal screenshots that include them.
+Use the plugin-first setup before running it:
 
-Required environment variables:
+1. Run `/remotty-configure` to store the Telegram bot token in Windows protected storage.
+2. Run `/remotty-access-pair <code>` to add your Telegram sender to the local allowlist.
+3. Run `/remotty-live-env-check` to confirm the live smoke can resolve its inputs.
+
+The smoke command can read the bot token from the configured secret and infer a single paired private sender.
+If `LIVE_WORKSPACE` is not set, it uses `target/live-smoke-workspace` and creates the `.remotty-live-smoke-ok` marker there.
+
+Only set `LIVE_*` variables when you need to override the plugin-first defaults.
+Do not paste secret values into chat, and do not share terminal screenshots that include them.
+
+Optional override environment variables:
 
 - `LIVE_TELEGRAM_BOT_TOKEN`
 - `LIVE_TELEGRAM_CHAT_ID`
 - `LIVE_TELEGRAM_SENDER_ID`
 - `LIVE_WORKSPACE`
-
-`LIVE_WORKSPACE` must point to a dedicated directory that already contains a file named `.remotty-live-smoke-ok`.
-This command refuses to write into a directory that does not carry that explicit opt-in marker.
 
 Optional environment variables:
 

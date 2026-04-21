@@ -14,6 +14,7 @@ Use it for:
 Available commands:
 
 - `/remotty-configure`
+- `/remotty-access-pair`
 - `/remotty-pair`
 - `/remotty-policy-allowlist`
 - `/remotty-start`

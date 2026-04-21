@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,8 +11,10 @@ use tempfile::tempdir;
 use tokio::time::sleep;
 
 use crate::config::Config;
+use crate::store::Store;
 use crate::telegram::TelegramClient;
 use crate::telegram_poller_guard::TelegramPollerGuard;
+use crate::windows_secret::load_secret;
 
 const LIVE_WORKSPACE_MARKER: &str = ".remotty-live-smoke-ok";
 
@@ -154,15 +157,12 @@ struct LiveApprovalEnv {
 
 impl LiveApprovalEnv {
     fn from_env(base_config: &Config) -> Result<Self> {
-        let workspace = validated_live_workspace(PathBuf::from(required_env("LIVE_WORKSPACE")?))?;
+        let workspace = resolve_live_workspace()?;
+        let sender_id = resolve_live_sender_id(base_config)?;
         Ok(Self {
-            bot_token: required_env("LIVE_TELEGRAM_BOT_TOKEN")?,
-            chat_id: required_env("LIVE_TELEGRAM_CHAT_ID")?
-                .parse()
-                .context("LIVE_TELEGRAM_CHAT_ID must be an integer")?,
-            sender_id: required_env("LIVE_TELEGRAM_SENDER_ID")?
-                .parse()
-                .context("LIVE_TELEGRAM_SENDER_ID must be an integer")?,
+            bot_token: resolve_live_bot_token(base_config)?,
+            chat_id: resolve_live_chat_id(sender_id)?,
+            sender_id,
             workspace,
             codex_bin: env::var("LIVE_CODEX_BIN")
                 .unwrap_or_else(|_| base_config.codex.binary.clone()),
@@ -179,6 +179,84 @@ impl LiveApprovalEnv {
                 .unwrap_or_else(|_| "app_server".to_owned()),
         })
     }
+}
+
+fn resolve_live_workspace() -> Result<PathBuf> {
+    if let Some(value) = optional_env("LIVE_WORKSPACE") {
+        return validated_live_workspace(PathBuf::from(value));
+    }
+
+    let workspace = env::current_dir()
+        .context("failed to resolve current directory")?
+        .join("target")
+        .join("live-smoke-workspace");
+    fs::create_dir_all(&workspace)
+        .with_context(|| format!("failed to create {}", workspace.display()))?;
+    let marker = workspace.join(LIVE_WORKSPACE_MARKER);
+    if !marker.exists() {
+        fs::write(&marker, "ok")
+            .with_context(|| format!("failed to write {}", marker.display()))?;
+    }
+    validated_live_workspace(workspace)
+}
+
+fn resolve_live_bot_token(base_config: &Config) -> Result<String> {
+    optional_env("LIVE_TELEGRAM_BOT_TOKEN")
+        .or_else(|| load_secret(&base_config.telegram.token_secret_ref).ok())
+        .ok_or_else(|| {
+            anyhow!(
+                "missing Telegram bot token. Run `/remotty-configure` or set LIVE_TELEGRAM_BOT_TOKEN."
+            )
+        })
+}
+
+fn resolve_live_sender_id(base_config: &Config) -> Result<i64> {
+    if let Some(value) = optional_env("LIVE_TELEGRAM_SENDER_ID") {
+        return value
+            .parse()
+            .context("LIVE_TELEGRAM_SENDER_ID must be an integer");
+    }
+
+    infer_single_sender_id(base_config)
+}
+
+fn resolve_live_chat_id(sender_id: i64) -> Result<i64> {
+    optional_env("LIVE_TELEGRAM_CHAT_ID")
+        .map(|value| {
+            value
+                .parse()
+                .context("LIVE_TELEGRAM_CHAT_ID must be an integer")
+        })
+        .transpose()
+        .map(|value| value.unwrap_or(sender_id))
+}
+
+fn infer_single_sender_id(base_config: &Config) -> Result<i64> {
+    let mut sender_ids = BTreeSet::new();
+    sender_ids.extend(base_config.telegram.admin_sender_ids.iter().copied());
+
+    if base_config.storage.db_path.exists() {
+        for sender in
+            Store::open_read_only(&base_config.storage.db_path)?.list_active_authorized_senders()?
+        {
+            sender_ids.insert(sender.sender_id);
+        }
+    }
+
+    match sender_ids.len() {
+        1 => Ok(*sender_ids.iter().next().expect("one sender id")),
+        0 => bail!("no paired Telegram sender found. Run `/remotty-pair` first."),
+        _ => bail!(
+            "multiple Telegram senders are allowed. Set LIVE_TELEGRAM_SENDER_ID and LIVE_TELEGRAM_CHAT_ID explicitly."
+        ),
+    }
+}
+
+fn optional_env(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn validated_live_workspace(workspace: PathBuf) -> Result<PathBuf> {
@@ -219,14 +297,6 @@ fn validated_live_workspace(workspace: PathBuf) -> Result<PathBuf> {
     }
 
     Ok(workspace)
-}
-
-fn required_env(name: &str) -> Result<String> {
-    let value = env::var(name).with_context(|| format!("missing env var {name}"))?;
-    if value.trim().is_empty() {
-        bail!("{name} must not be empty");
-    }
-    Ok(value)
 }
 
 fn build_prompt(
