@@ -128,5 +128,16 @@
                 "Hardened release and public-surface audit automation for Windows output handling."
             )
         }
+        @{
+            Version = "0.1.14"
+            Commit = "adf7640e8692ac23c99cbdcbf57abee4d10f55be"
+            Title = "Guarded Telegram polling"
+            Notes = @(
+                "Centralized Telegram update reads behind a guarded poller that resolves bot identity before polling."
+                "Routed bridge runtime, legacy pairing, and live smoke guard checks through the same poller path."
+                "Added CI-backed Gitleaks scanning and documented the layered secret checks."
+                "Hardened release automation so Cargo.lock and empty planning updates are handled consistently."
+            )
+        }
     )
 }
