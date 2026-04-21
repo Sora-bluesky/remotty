@@ -12,8 +12,7 @@ Run the manual approval-accept smoke against Telegram without printing any secre
 6. Follow the local terminal guidance and use Telegram to press `承認` when the pending request appears.
 7. Confirm that the smoke finished with a success message.
 
-If the `remotty` command is unavailable in a source checkout, fall back to
-`cargo run -- telegram smoke approval accept --config bridge.toml`.
+Use the installed `remotty` command for this check. In a source checkout, build or install the package before running manual smoke.
 
 ## Output requirements
 

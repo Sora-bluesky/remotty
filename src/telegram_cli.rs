@@ -196,9 +196,8 @@ pub fn policy_allowlist(config_path: impl AsRef<Path>) -> Result<String> {
     ))
 }
 
-pub fn live_env_check() -> String {
-    let default_config = Path::new("bridge.toml");
-    let config = Config::load(default_config).ok();
+pub async fn live_env_check(config_path: impl AsRef<Path>) -> Result<String> {
+    let config = Config::load(config_path.as_ref()).ok();
     let optional = [
         "LIVE_CODEX_BIN",
         "LIVE_CODEX_PROFILE",
@@ -220,11 +219,15 @@ pub fn live_env_check() -> String {
         live_sender_presence(config.as_ref())
     ));
     lines.push(format!("- `LIVE_WORKSPACE`: {}", live_workspace_presence()));
+    lines.push(format!(
+        "- Telegram webhook: {}",
+        live_webhook_presence(config.as_ref()).await
+    ));
     lines.push("optional:".to_owned());
     for key in optional {
         lines.push(format!("- `{key}`: {}", env_presence(key)));
     }
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }
 
 fn resolve_secret_ref(config_path: &Path) -> Result<String> {
@@ -334,6 +337,25 @@ fn live_workspace_presence() -> &'static str {
         "set"
     } else {
         "default"
+    }
+}
+
+async fn live_webhook_presence(config: Option<&Config>) -> &'static str {
+    let Some(config) = config else {
+        return "unknown";
+    };
+    let Ok(token) = load_token(config) else {
+        return "unknown";
+    };
+    let telegram = TelegramClient::with_base_urls(
+        token,
+        config.telegram.api_base_url.clone(),
+        config.telegram.file_base_url.clone(),
+    );
+    match telegram.get_webhook_info().await {
+        Ok(webhook) if webhook.url.trim().is_empty() => "polling-ready",
+        Ok(_) => "webhook-configured",
+        Err(_) => "unknown",
     }
 }
 

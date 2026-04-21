@@ -636,7 +636,8 @@ impl TelegramClient {
             .and_then(|response| {
                 if response.status() == StatusCode::CONFLICT {
                     bail!(
-                        "telegram getUpdates returned 409 Conflict. Stop any other bridge, live smoke, or bot worker that is reading updates for this bot, then retry."
+                        "telegram getUpdates returned 409 Conflict. Stop any other bridge, live smoke, or bot worker that is reading updates for this bot, then retry.\n{}",
+                        polling_conflict_hint()
                     );
                 }
                 response
@@ -647,6 +648,10 @@ impl TelegramClient {
             .await
             .context("failed to decode telegram getUpdates response")
     }
+}
+
+fn polling_conflict_hint() -> &'static str {
+    "Windows では `Get-Process remotty, codex -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path` で候補を確認できます。対象が分かる場合は `Stop-Process -Id <PID>` で止めてください。"
 }
 
 #[derive(Debug, Clone)]

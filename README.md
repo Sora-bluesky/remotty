@@ -59,6 +59,9 @@ Rust is only required when you build from a source checkout instead of using the
 
 ## Quick Start
 
+For the step-by-step Telegram setup, use the dedicated [Telegram Quickstart](docs/telegram-quickstart.md).
+It also explains how `remotty` differs from Codex Remote connections.
+
 ### 1. Install `remotty`
 
 Install from the GitHub Release package:
@@ -341,6 +344,8 @@ Use the plugin-first setup before running it:
 
 The smoke command can read the bot token from the configured secret and infer a single paired private sender.
 If `LIVE_WORKSPACE` is not set, it uses `target/live-smoke-workspace` and creates the `.remotty-live-smoke-ok` marker there.
+`/remotty-live-env-check` also checks whether the bot is in polling mode.
+It reports `polling-ready` when no webhook is configured and `webhook-configured` when the bot must be switched back before a smoke run.
 
 Only set `LIVE_*` variables when you need to override the plugin-first defaults.
 Do not paste secret values into chat, and do not share terminal screenshots that include them.
@@ -365,6 +370,12 @@ Check the environment first:
 remotty telegram live-env-check
 ```
 
+For a non-default config file:
+
+```powershell
+remotty telegram live-env-check --config bridge.local.toml
+```
+
 Then run the approval-accept smoke:
 
 ```powershell
@@ -380,6 +391,7 @@ remotty telegram smoke approval decline --config bridge.toml
 
 Use a dedicated test bot and chat when possible.
 Use a dedicated smoke workspace as well.
+If a smoke run reports a polling conflict, stop the other `remotty` process that is reading the same bot before retrying.
 
 ## Repository Layout
 
