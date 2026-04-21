@@ -42,6 +42,18 @@ if (-not $SyncOnly) {
         & $auditPublicSurfaceScript | Out-Null
         & $auditDocTerminologyScript | Out-Null
         & $auditSecretSurfaceScript | Out-Null
+
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            throw "GitHub CLI (gh) is required for release."
+        }
+
+        $status = git status --porcelain 2>&1
+        if ($status) {
+            throw "Working tree is not clean. Commit or stash changes before releasing."
+        }
+
+        $branch = "release/$tag"
+        git switch -c $branch | Out-Null
     } finally {
         Pop-Location
     }
@@ -57,18 +69,6 @@ if ($SyncOnly) {
 
 Push-Location $resolvedRepoRoot
 try {
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        throw "GitHub CLI (gh) is required for release."
-    }
-
-    $status = git status --porcelain 2>&1
-    if ($status) {
-        throw "Working tree is not clean. Commit or stash changes before releasing."
-    }
-
-    $branch = "release/$tag"
-    git switch -c $branch | Out-Null
-
     git add VERSION Cargo.toml
     git commit -m "chore: bump version to $normalizedVersion" | Out-Null
     git push -u origin $branch | Out-Null
