@@ -409,6 +409,21 @@ fn bump_version_checks_native_release_command_failures() -> Result<()> {
 }
 
 #[test]
+fn bump_version_keeps_empty_backlog_updates_countable() -> Result<()> {
+    let script = fs::read_to_string(repo_root().join("scripts").join("bump-version.ps1"))?;
+
+    assert!(
+        script.contains(
+            "$updatedTaskIds = @(Update-ReleaseBacklogStatus -BacklogPath $backlogPath -Version $normalizedVersion)"
+        ),
+        "bump-version should keep empty backlog update results as an array"
+    );
+    assert!(script.contains("if ($updatedTaskIds.Count -gt 0)"));
+
+    Ok(())
+}
+
+#[test]
 fn release_preflight_allows_missing_title_map_when_backlog_exists() -> Result<()> {
     let temp = TempDir::new()?;
     let backlog_path = temp.path().join("backlog.yaml");

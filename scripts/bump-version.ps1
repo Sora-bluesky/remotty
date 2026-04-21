@@ -110,7 +110,7 @@ try {
     gh release create $tag --title $tag --notes-file $notesPath --verify-tag --latest | Out-Null
     Assert-NativeSuccess "gh release create $tag"
 
-    $updatedTaskIds = Update-ReleaseBacklogStatus -BacklogPath $backlogPath -Version $normalizedVersion
+    $updatedTaskIds = @(Update-ReleaseBacklogStatus -BacklogPath $backlogPath -Version $normalizedVersion)
     if ($updatedTaskIds.Count -gt 0) {
         & $syncRoadmapScript -BacklogPath $backlogPath -RoadmapPath $roadmapPath -RoadmapTitleJaPath $titlePath | Out-Null
     }
