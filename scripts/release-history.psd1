@@ -150,5 +150,16 @@
                 "Updated public setup docs to use the GitHub Release package before npm registry publishing."
             )
         }
+        @{
+            Version = "0.1.16"
+            Commit = "3f15b971cd9700441f684e767ef627a1af99cbfb"
+            Title = "Fake Telegram bridge integration tests"
+            Notes = @(
+                "Added fake Telegram integration coverage that runs the real bridge against a local Telegram-compatible test server."
+                "Verified normal message round trips through a mocked Codex executable."
+                "Covered Telegram approval callback accept and decline flows through the fake server."
+                "Kept the integration harness local-only so release checks do not require real Telegram credentials."
+            )
+        }
     )
 }
