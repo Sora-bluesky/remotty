@@ -117,5 +117,16 @@
                 "Tightened text truncation behavior and added coverage for summary length boundaries."
             )
         }
+        @{
+            Version = "0.1.13"
+            Commit = "3640e9ab0a4b23c595592809f515f496a70ea246"
+            Title = "Plugin-first Telegram pairing"
+            Notes = @(
+                "Added bot-issued Telegram pairing codes for the Codex plugin setup flow."
+                "Allowed live approval smoke runs to infer saved bot credentials, paired sender IDs, and a default live workspace."
+                "Updated Codex exec JSON parsing and suppressed extra Windows terminal windows during bridge runs."
+                "Hardened release and public-surface audit automation for Windows output handling."
+            )
+        }
     )
 }
