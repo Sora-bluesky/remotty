@@ -25,16 +25,50 @@ PowerShell で実行します。
 npm install -g remotty
 ```
 
-インストール先を確認します。
+設定ファイルの場所を変数に入れます。
 
 ```powershell
-$remottyRoot = Join-Path (npm root -g) "remotty"
 $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
 以降の PowerShell 例では、`$configPath` を使います。
 
-## 2. 作業したいプロジェクトへ入る
+## 入力場所と保存先
+
+Codex App 用の `/remotty-...` コマンドは、Codex App のチャット欄へ入力します。
+PowerShell へ入力するコマンドではありません。
+Telegram へ入力する場合は、この手順内で明示します。
+
+bot token は、プロジェクトのリポジトリへ保存しません。
+Windows の保護領域へ保存します。
+`remotty` の設定と状態は `%APPDATA%\remotty` 配下へ保存します。
+
+`/remotty-use-this-project` は、対象プロジェクトを開いた状態で実行します。
+`/remotty-configure` と `/remotty-start` は、リポジトリへ書き込みません。
+ただし、迷わないために同じプロジェクトで続けて実行してください。
+
+## 2. ローカルプラグインを入れる
+
+Codex App では、ローカルプラグインを使えます。
+
+Plugins 画面で次を行います。
+
+1. プラグイン元の選択欄で `remotty local plugins` を選びます。
+2. 一覧の `remotty` で追加ボタンを押します。
+3. インストール確認画面で確定します。
+
+`remotty local plugins` を選ぶと、一覧に `remotty` が出ます。
+
+![Codex のプラグイン一覧で remotty local plugins を選ぶ](assets/quickstart/codex-plugin-marketplace-select.png)
+
+追加ボタンを押し、インストール確認を進めます。
+
+![Codex の remotty プラグインインストール確認画面](assets/quickstart/codex-plugin-install-remotty.png)
+
+Codex CLI だけで使う場合は、この手順を飛ばせます。
+以降にある PowerShell のコマンドを使ってください。
+
+## 3. 作業したいプロジェクトへ入る
 
 Telegram から続けたいプロジェクトを使います。
 毎回同じプロジェクトを使う必要はありません。
@@ -47,30 +81,10 @@ Codex CLI を使う場合は、PowerShell でフォルダへ入ります。
 Set-Location C:\path\to\your\project
 ```
 
-## 3. ローカルプラグインを入れる
-
-Codex App では、ローカルプラグインを使えます。
-
-Plugins 画面で次を行います。
-
-1. `$remottyRoot` 配下の `.agents/plugins/marketplace.json` を追加します。
-2. `remotty` というプラグインを入れます。
-3. Plugins 画面に `remotty` が表示されることを確認します。
-
-ローカルの marketplace を選ぶと、一覧に `remotty` が出ます。
-
-![Codex のプラグイン一覧で remotty のローカル marketplace を選ぶ](assets/quickstart/codex-plugin-marketplace-select.png)
-
-追加ボタンを押し、インストール確認を進めます。
-
-![Codex の remotty プラグインインストール確認画面](assets/quickstart/codex-plugin-install-remotty.png)
-
-Codex CLI だけで使う場合は、この手順を飛ばせます。
-以降にある PowerShell のコマンドを使ってください。
-
 ## 4. このプロジェクトを登録する
 
-Codex App では、次を実行します。
+Codex App では、チャット欄へ次を入力します。
+このコマンドだけは、対象プロジェクトを開いた状態で実行します。
 
 ```text
 /remotty-use-this-project
@@ -97,7 +111,8 @@ token をチャット、スクリーンショット、issue、PR に貼らない
 
 ## 6. bot token を保存する
 
-Codex App では、次を実行します。
+Codex App では、チャット欄へ次を入力します。
+この操作は、今開いているリポジトリへ token を保存しません。
 
 ```text
 /remotty-configure
@@ -111,10 +126,14 @@ remotty telegram configure --config $configPath
 
 表示に従って token を貼ります。
 このコマンドは token を再表示せず、Windows の保護領域へ保存します。
+保存先は Windows ユーザーごとの保護領域です。
+プロジェクトを変えても、同じ Windows ユーザーなら同じ保存先を使います。
 
 ## 7. ブリッジを起動する
 
-Codex App では、次を実行します。
+Codex App では、チャット欄へ次を入力します。
+起動時は `%APPDATA%\remotty\bridge.toml` の設定を使います。
+今開いているリポジトリへ状態ファイルは置きません。
 
 ```text
 /remotty-start

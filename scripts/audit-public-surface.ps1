@@ -120,10 +120,16 @@ Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessio
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-use-this-project'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex CLI users run'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'remotty config workspace upsert'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex App chat box'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Windows protected storage'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'remotty local plugins'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-sessions <thread_id>'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-use-this-project'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex CLI では'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'remotty config workspace upsert'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex App のチャット欄'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Windows の保護領域'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'remotty local plugins'
 Assert-FileContains -Path 'docs/exec-transport.md' -Needle 'transport = "exec"'
 Assert-FileContains -Path 'docs/exec-transport.ja.md' -Needle 'transport = "exec"'
 Assert-FileContains -Path 'docs/upgrading.md' -Needle 'transport = "app_server"'
@@ -132,7 +138,8 @@ Assert-FileContains -Path 'docs/upgrading.ja.md' -Needle 'transport = "app_serve
 if (Test-Path -LiteralPath 'docs/telegram-quickstart.md') {
     $quickstart = Get-Content -LiteralPath 'docs/telegram-quickstart.md' -Raw
     if ($quickstart.Contains('writable_roots') -or
-        $quickstart.Contains('path = "C:/Users/you/Documents/project"')) {
+        $quickstart.Contains('path = "C:/Users/you/Documents/project"') -or
+        $quickstart.Contains('.agents/plugins/marketplace.json')) {
         $failures.Add('Telegram quickstart must not use bridge.toml workspace editing in the main path.') | Out-Null
     }
 }
@@ -140,7 +147,8 @@ if (Test-Path -LiteralPath 'docs/telegram-quickstart.md') {
 if (Test-Path -LiteralPath 'docs/telegram-quickstart.ja.md') {
     $quickstartJa = Get-Content -LiteralPath 'docs/telegram-quickstart.ja.md' -Raw
     if ($quickstartJa.Contains('writable_roots') -or
-        $quickstartJa.Contains('path = "C:/Users/you/Documents/project"')) {
+        $quickstartJa.Contains('path = "C:/Users/you/Documents/project"') -or
+        $quickstartJa.Contains('.agents/plugins/marketplace.json')) {
         $failures.Add('Japanese Telegram quickstart must not use bridge.toml workspace editing in the main path.') | Out-Null
     }
 }
