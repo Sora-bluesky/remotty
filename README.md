@@ -2,6 +2,8 @@
 
 # remotty
 
+![remotty: Windows bridge for Codex and Telegram](docs/assets/hero.png)
+
 `remotty` is a Windows bridge that lets you talk to a local coding agent from Telegram.
 
 It runs on your Windows machine, receives messages from your Telegram bot, starts `codex`, and sends the result back to the same chat. The project is designed for people who want a simple chat-based control surface without exposing a public webhook server.
@@ -43,7 +45,7 @@ Use the local `remotty` plugin to:
 - pair your Telegram account from a bot-issued code
 - start, stop, and inspect the bridge from one place
 
-The Rust bridge still runs as the local core. The plugin is the user-facing layer.
+Open the installed `remotty` package folder in Codex and enable the local plugin so the `/remotty-*` commands are available. `remotty` does not use Claude Code Channels, so you do not start Codex with `--channels`. The Telegram bridge runs as a separate local process and talks to the local `codex` CLI.
 
 ## Requirements
 
@@ -65,20 +67,20 @@ It also explains how `remotty` differs from Codex Remote connections.
 
 ### 1. Install `remotty`
 
-Install from the GitHub Release package:
+Install from npm:
 
 ```powershell
-npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
+npm install -g remotty
 $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
 ```
 
 The package installs the `remotty` command and downloads the matching Windows binary from the GitHub Release for that package version.
 
-After the package is published to the npm registry, the shorter command will be:
+If you need to install directly from the GitHub Release tarball:
 
 ```powershell
-npm install -g remotty
+npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
 ```
 
 If you want to work from source instead:
@@ -309,113 +311,11 @@ remotty service stop
 remotty service uninstall
 ```
 
-## For Contributors
+## Related Docs
 
-### Checks
-
-```powershell
-cargo fmt --check
-cargo test
-cargo check
-node --check npm/install.js
-node --check bin/remotty.js
-pwsh -NoProfile -File scripts/audit-public-surface.ps1
-pwsh -NoProfile -File scripts/audit-secret-surface.ps1
-```
-
-### npm registry publish
-
-GitHub Releases include `remotty.tgz` and a versioned tarball such as `remotty-0.1.19.tgz`.
-The release workflow publishes the versioned tarball to the npm registry when the repository has an Actions secret named `NPM_TOKEN`.
-Create the token from an npm account that owns the `remotty` package, then add it in GitHub under **Settings > Secrets and variables > Actions > New repository secret**.
-
-Use this secret name:
-
-```text
-NPM_TOKEN
-```
-
-Without that secret, the GitHub Release still succeeds and npm publishing is skipped.
-
-For a manual publish from a maintainer machine, use:
-
-```powershell
-npm publish .\release\remotty.tgz
-```
-
-Run either publish path only from an npm account that owns the `remotty` package.
-
-### Optional manual smoke
-
-The manual smoke run is opt-in and does not run in CI.
-Use the plugin-first setup before running it:
-
-1. Run `/remotty-configure` to store the Telegram bot token in Windows protected storage.
-2. Run `/remotty-access-pair <code>` to add your Telegram sender to the local allowlist.
-3. Run `/remotty-live-env-check` to confirm the live smoke can resolve its inputs.
-
-The smoke command can read the bot token from the configured secret and infer a single paired private sender.
-If `LIVE_WORKSPACE` is not set, it uses `target/live-smoke-workspace` and creates the `.remotty-live-smoke-ok` marker there.
-`/remotty-live-env-check` also checks whether the bot is in polling mode.
-It reports `polling-ready` when no webhook is configured and `webhook-configured` when the bot must be switched back before a smoke run.
-
-Only set `LIVE_*` variables when you need to override the plugin-first defaults.
-Do not paste secret values into chat, and do not share terminal screenshots that include them.
-
-Optional override environment variables:
-
-- `LIVE_TELEGRAM_BOT_TOKEN`
-- `LIVE_TELEGRAM_CHAT_ID`
-- `LIVE_TELEGRAM_SENDER_ID`
-- `LIVE_WORKSPACE`
-
-Optional environment variables:
-
-- `LIVE_CODEX_BIN`
-- `LIVE_CODEX_PROFILE`
-- `LIVE_TIMEOUT_SEC`
-- `LIVE_APPROVAL_MODE`
-
-Check the environment first:
-
-```powershell
-remotty telegram live-env-check
-```
-
-For a non-default config file:
-
-```powershell
-remotty telegram live-env-check --config bridge.local.toml
-```
-
-Then run the approval-accept smoke:
-
-```powershell
-remotty telegram smoke approval accept --config bridge.toml
-```
-
-For the approval-decline smoke:
-
-```powershell
-$env:LIVE_APPROVAL_MODE = "app_server"
-remotty telegram smoke approval decline --config bridge.toml
-```
-
-Use a dedicated test bot and chat when possible.
-Use a dedicated smoke workspace as well.
-If a smoke run reports a polling conflict, stop the other `remotty` process that is reading the same bot before retrying.
-
-## Repository Layout
-
-```text
-remotty/
-├── src/                    # bridge runtime, Telegram client, Codex runner
-├── tests/                  # config, mock Telegram, and safety tests
-├── scripts/                # maintenance and validation scripts
-├── bridge.toml             # local configuration starter
-├── README.md               # English README
-└── README.ja.md            # Japanese README
-```
+- [Telegram Quickstart](docs/telegram-quickstart.md)
+- [Fakechat Demo](docs/fakechat-demo.md)
+- [Development](docs/development.md)
 
 ## License
 

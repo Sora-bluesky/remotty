@@ -4,6 +4,8 @@
 
 `remotty` は Codex Remote connections の代替ではありません。Remote connections は、Codex アプリから SSH 先の開発環境を扱う機能です。`remotty` は、Windows PC 上で使える Codex の作業環境へ Telegram から依頼を送るブリッジです。
 
+`remotty` は Claude Code Channels とも仕組みが違います。Channels は channel plugin と `--channels` 付き起動が必要です。`remotty` はローカルのブリッジプロセスとして動くため、Codex を channel 用のフラグ付きで起動する必要はありません。ローカル `plugin` は、`/remotty-*` の設定と操作コマンドを提供するために使います。
+
 ## 必要なもの
 
 - Windows 10 または Windows 11
@@ -16,15 +18,21 @@
 
 ## 1. `remotty` を入れる
 
-GitHub Release の最新パッケージから入れます。
+`npm` から入れます。
 
 ```powershell
-npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
+npm install -g remotty
 $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
 ```
 
 この手順で `remotty` コマンドが入り、同じ版の Windows 用バイナリも取得されます。
+
+GitHub Release の tarball から直接入れたい場合は、次を使います。
+
+```powershell
+npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
+```
 
 ## 2. Telegram bot を作る
 
@@ -38,7 +46,7 @@ token をチャット、スクリーンショット、issue、PR に貼らない
 
 ## 3. token を設定する
 
-Codex で `remotty` のパッケージフォルダを開き、次を実行します。
+Codex で `remotty` のパッケージフォルダを開き、ローカル `plugin` を有効化します。次に、これを実行します。
 
 ```text
 /remotty-configure

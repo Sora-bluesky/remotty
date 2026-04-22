@@ -4,6 +4,8 @@ Use this guide to connect `remotty` to a Telegram bot and send messages to your 
 
 `remotty` is not a replacement for Codex Remote connections. Remote connections let the Codex app work on an SSH target. `remotty` is a Telegram bridge for reaching the Codex workflow that is already available on your Windows machine.
 
+`remotty` also differs from Claude Code Channels. Channels require a channel plugin and a `--channels` launch flag. `remotty` runs its own local bridge process, so Codex does not need a channel flag. The local `remotty` plugin only provides the `/remotty-*` setup and control commands.
+
 ## What You Need
 
 - Windows 10 or Windows 11
@@ -16,15 +18,21 @@ Use a dedicated bot for `remotty` when possible.
 
 ## 1. Install `remotty`
 
-Install from the latest GitHub Release package:
+Install from npm:
 
 ```powershell
-npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
+npm install -g remotty
 $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
 ```
 
 This installs the `remotty` command and downloads the matching Windows binary.
+
+If you need to install directly from the GitHub Release tarball:
+
+```powershell
+npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
+```
 
 ## 2. Create a Telegram Bot
 
@@ -38,7 +46,7 @@ Do not post the token in chat, screenshots, issues, or pull requests.
 
 ## 3. Configure the Token
 
-Open the `remotty` package folder in Codex and run:
+Open the `remotty` package folder in Codex and enable the local plugin. Then run:
 
 ```text
 /remotty-configure

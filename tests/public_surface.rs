@@ -62,6 +62,7 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
             .join("release.yml"),
     )?;
     let readme = std::fs::read_to_string(repo_root().join("README.md"))?;
+    let development_doc = std::fs::read_to_string(repo_root().join("docs").join("development.md"))?;
 
     assert!(package.contains(r#""postinstall": "node npm/install.js""#));
     assert!(package.contains(r#""remotty": "bin/remotty.js""#));
@@ -77,9 +78,11 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("cp release/remotty-*.tgz release/remotty.tgz"));
     assert!(release_workflow.contains("NPM_TOKEN: ${{ secrets.NPM_TOKEN }}"));
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
+    assert!(readme.contains("docs/assets/hero.png"));
+    assert!(readme.contains("npm install -g remotty"));
     assert!(readme.contains("releases/latest/download/remotty.tgz"));
-    assert!(readme.contains("NPM_TOKEN"));
-    assert!(readme.contains("npm publish .\\release\\remotty.tgz"));
+    assert!(development_doc.contains("NPM_TOKEN"));
+    assert!(development_doc.contains("npm publish .\\release\\remotty.tgz"));
 
     Ok(())
 }
