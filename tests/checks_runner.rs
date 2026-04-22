@@ -78,6 +78,10 @@ checks_profile = "quick"
     assert_eq!(profile.commands[0].args, vec!["fmt", "--check"]);
     assert_eq!(profile.commands[1].timeout_sec, 90);
     assert_eq!(config.policy.max_turns_limit, 4);
+    assert_eq!(config.storage.db_path, dir.path().join("state/bridge.db"));
+    assert_eq!(config.storage.state_dir, dir.path().join("state"));
+    assert_eq!(config.storage.temp_dir, dir.path().join("state/tmp"));
+    assert_eq!(config.storage.log_dir, dir.path().join("state/logs"));
     Ok(())
 }
 

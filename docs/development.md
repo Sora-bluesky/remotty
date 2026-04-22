@@ -22,9 +22,17 @@ Run the full history secret scan before release work:
 gitleaks git --log-opts=--all --redact --verbose .
 ```
 
+Secret checks are intentionally layered:
+
+| Layer | Implementation | Scope |
+| --- | --- | --- |
+| pre-commit | Global `~/.git-hooks/pre-commit` with git-guard-style regex checks | staged diff |
+| CI | `.github/workflows/gitleaks.yml` with the Gitleaks GitHub Action | push and pull request changes |
+| Manual history scan | `gitleaks git --log-opts=--all --redact --verbose .` | full git history |
+
 ## npm Registry Publish
 
-GitHub Releases include `remotty.tgz` and a versioned tarball such as `remotty-0.1.21.tgz`.
+GitHub Releases include `remotty.tgz` and a versioned tarball such as `remotty-0.1.x.tgz`.
 The release workflow publishes the versioned tarball to npm when the repository has an Actions secret named `NPM_TOKEN`.
 
 Create the token from an npm account that owns the `remotty` package.
@@ -50,9 +58,9 @@ Run either publish path only from an npm account that owns the `remotty` package
 The manual smoke run is opt-in and does not run in CI.
 Configure `remotty` first:
 
-1. Run `/remotty-configure` to store the Telegram bot token in Windows protected storage.
-2. Run `/remotty-access-pair <code>` to add your Telegram sender to the local allowlist.
-3. Run `/remotty-live-env-check` to confirm the live smoke can resolve its inputs.
+1. Run `remotty telegram configure --config C:/path/to/custom-bridge.toml` to store the Telegram bot token in Windows protected storage.
+2. Run `remotty telegram access-pair <code> --config C:/path/to/custom-bridge.toml` to add your Telegram sender to the local allowlist.
+3. Run `remotty telegram live-env-check --config C:/path/to/custom-bridge.toml` to confirm the live smoke can resolve its inputs.
 
 The smoke command can read the bot token from the configured secret and infer a single paired private sender.
 If `LIVE_WORKSPACE` is not set, it uses `target/live-smoke-workspace` and creates the `.remotty-live-smoke-ok` marker there.
@@ -85,20 +93,19 @@ remotty telegram live-env-check
 For a non-default config file:
 
 ```powershell
-remotty telegram live-env-check --config bridge.local.toml
+remotty telegram live-env-check --config C:/path/to/custom-bridge.toml
 ```
 
 Then run the approval-accept smoke:
 
 ```powershell
-remotty telegram smoke approval accept --config bridge.toml
+remotty telegram smoke approval accept --config C:/path/to/custom-bridge.toml
 ```
 
 For the approval-decline smoke:
 
 ```powershell
-$env:LIVE_APPROVAL_MODE = "app_server"
-remotty telegram smoke approval decline --config bridge.toml
+remotty telegram smoke approval decline --config C:/path/to/custom-bridge.toml
 ```
 
 Use a dedicated test bot, chat, and smoke workspace when possible.

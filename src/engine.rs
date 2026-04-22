@@ -251,7 +251,7 @@ async fn handle_message(
                 .await;
                 let callback_text = match &result {
                     Ok(reply) => reply.callback_text.clone(),
-                    Err(_) => "承認操作を処理できませんでした。".to_owned(),
+                    Err(_) => "Could not process the approval decision.".to_owned(),
                 };
                 (result.map(|reply| reply.reply_text), Some(callback_text))
             }
@@ -275,7 +275,7 @@ async fn handle_message(
                 .await;
                 let callback_text = match &result {
                     Ok(reply) => reply.callback_text.clone(),
-                    Err(_) => "承認操作を処理できませんでした。".to_owned(),
+                    Err(_) => "Could not process the approval decision.".to_owned(),
                 };
                 (result.map(|reply| reply.reply_text), Some(callback_text))
             }
@@ -537,7 +537,7 @@ fn handle_control_command(
             ))
         }
         TelegramControlCommand::Approve { .. } | TelegramControlCommand::Deny { .. } => Ok(
-            "この内部経路では承認操作を扱いません。通常の Telegram メッセージかボタン操作を使ってください。"
+            "This internal path does not handle approval decisions. Use a normal Telegram message or button."
                 .to_owned(),
         ),
     }
@@ -560,7 +560,7 @@ async fn handle_approval_decision_message(
         ApprovalRequestLookup::Found(request) => request,
         ApprovalRequestLookup::Stale(request) => {
             let text = format!(
-                "承認要求 `{}` の button は古くなっています。最新の通知を使ってください。",
+                "Approval request `{}` is stale. Use the latest notification.",
                 request.request_id
             );
             if let Some(message_id) = callback_message_id {
@@ -570,11 +570,11 @@ async fn handle_approval_decision_message(
             }
             return Ok(ApprovalDecisionReply::new(
                 text,
-                "古い button です。最新の通知を使ってください。",
+                "This button is stale. Use the latest notification.",
             ));
         }
         ApprovalRequestLookup::Missing => {
-            let text = format!("承認要求 `{request_id}` は見つかりません。");
+            let text = format!("Approval request `{request_id}` was not found.");
             if let Some(message_id) = callback_message_id {
                 let _ = telegram
                     .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
@@ -582,36 +582,38 @@ async fn handle_approval_decision_message(
             }
             return Ok(ApprovalDecisionReply::new(
                 text,
-                "承認要求が見つかりません。",
+                "Approval request not found.",
             ));
         }
     };
     let request_id = request.request_id.as_str();
     let Some(lane) = lane else {
         return Ok(ApprovalDecisionReply::new(
-            "この会話には承認対象のレーンがありません。",
-            "この会話では処理できません。",
+            "This chat has no lane for the approval request.",
+            "This chat cannot handle that request.",
         ));
     };
     if lane.lane_id != request.lane_id {
         return Ok(ApprovalDecisionReply::new(
-            "この会話の承認要求ではありません。",
-            "別の会話の承認要求です。",
+            "This approval request belongs to a different chat.",
+            "Wrong chat for this request.",
         ));
     }
     let current_lane = store
         .find_lane(chat_id, thread_key)?
-        .ok_or_else(|| anyhow!("承認対象のレーンが見つかりません。"))?;
+        .ok_or_else(|| anyhow!("approval lane not found"))?;
     if current_lane.lane_id != request.lane_id {
         return Ok(ApprovalDecisionReply::new(
-            "この会話の承認要求ではありません。",
-            "別の会話の承認要求です。",
+            "This approval request belongs to a different chat.",
+            "Wrong chat for this request.",
         ));
     }
     if request.request_kind == crate::store::ApprovalRequestKind::ToolUserInput {
         return Ok(ApprovalDecisionReply::new(
-            format!("承認要求 `{request_id}` は追加入力型のため、まだ処理できません。"),
-            "この種類は Telegram から返せません。",
+            format!(
+                "Approval request `{request_id}` needs additional input and cannot be handled from Telegram yet."
+            ),
+            "This request type cannot be answered from Telegram.",
         ));
     }
 
@@ -623,18 +625,18 @@ async fn handle_approval_decision_message(
     if request.status == ApprovalRequestStatus::Dispatching {
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "承認要求 `{request_id}` は送信直後です。数秒待ってからもう一度操作してください。"
+                "Approval request `{request_id}` was just sent. Wait a few seconds and try again."
             ),
-            "送信直後です。数秒待ってください。",
+            "Wait a few seconds and try again.",
         ));
     }
     if request.status != ApprovalRequestStatus::Pending {
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{}`",
+                "Approval request `{request_id}` was already handled. Current status: `{}`",
                 approval_status_name(request.status)
             ),
-            format!("すでに `{}` です。", approval_status_name(request.status)),
+            format!("Already `{}`.", approval_status_name(request.status)),
         ));
     }
 
@@ -644,12 +646,12 @@ async fn handle_approval_decision_message(
             let current_status = store
                 .find_approval_request(request_id)?
                 .map(|current| approval_status_name(current.status).to_owned())
-                .unwrap_or_else(|| "不明".to_owned());
+                .unwrap_or_else(|| "unknown".to_owned());
             return Ok(ApprovalDecisionReply::new(
                 format!(
-                    "承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"
+                    "Approval request `{request_id}` was already handled. Current status: `{current_status}`"
                 ),
-                format!("すでに `{current_status}` です。"),
+                format!("Already `{current_status}`."),
             ));
         }
         if let Some(message_id) = request.telegram_message_id {
@@ -660,13 +662,13 @@ async fn handle_approval_decision_message(
         }
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "承認要求 `{request_id}` を {} として記録しました。`app_server` を有効にすると、そのまま継続へ返せます。",
-                if approved { "承認" } else { "非承認" }
+                "Approval request `{request_id}` was recorded as {}. Enable `app_server` to resume the same turn.",
+                if approved { "approved" } else { "declined" }
             ),
             if approved {
-                "承認を記録しました。".to_owned()
+                "Approval recorded.".to_owned()
             } else {
-                "非承認を記録しました。".to_owned()
+                "Decline recorded.".to_owned()
             },
         ));
     }
@@ -674,7 +676,7 @@ async fn handle_approval_decision_message(
         let _ = store.expire_approval_request(request_id, &lane.lane_id, &request.run_id)?;
         if let Some(message_id) = request.telegram_message_id {
             let text = format!(
-                "承認要求 `{request_id}` は旧形式のまま残っていたため無効にしました。元の依頼をもう一度送ってください。"
+                "Approval request `{request_id}` used an old format and was invalidated. Send the original request again."
             );
             let _ = telegram
                 .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
@@ -682,9 +684,9 @@ async fn handle_approval_decision_message(
         }
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "承認要求 `{request_id}` は旧形式のため継続できません。元の依頼をもう一度送ってください。"
+                "Approval request `{request_id}` uses an old format and cannot continue. Send the original request again."
             ),
-            "旧形式の要求を無効化しました。".to_owned(),
+            "Old-format request invalidated.".to_owned(),
         ));
     }
 
@@ -694,10 +696,12 @@ async fn handle_approval_decision_message(
         let current_status = store
             .find_approval_request(request_id)?
             .map(|current| approval_status_name(current.status).to_owned())
-            .unwrap_or_else(|| "不明".to_owned());
+            .unwrap_or_else(|| "unknown".to_owned());
         return Ok(ApprovalDecisionReply::new(
-            format!("承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"),
-            format!("すでに `{current_status}` です。"),
+            format!(
+                "Approval request `{request_id}` was already handled. Current status: `{current_status}`"
+            ),
+            format!("Already `{current_status}`."),
         ));
     }
     let continued_outcome = match codex.resolve_approval(&request, approved).await {
@@ -714,7 +718,7 @@ async fn handle_approval_decision_message(
             )?;
             if let Some(message_id) = request.telegram_message_id {
                 let text = format!(
-                    "承認要求 `{request_id}` の継続結果が不明になりました。ローカルのログを確認してから判断してください。"
+                    "Approval request `{request_id}` has an unknown continuation result. Check local logs before deciding what to do."
                 );
                 let _ = telegram
                     .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
@@ -722,9 +726,9 @@ async fn handle_approval_decision_message(
             }
             return Ok(ApprovalDecisionReply::new(
                 format!(
-                    "承認要求 `{request_id}` の継続結果が不明です。ローカルのログを確認し、状況が確定するまで再送しないでください。"
+                    "Approval request `{request_id}` has an unknown continuation result. Check local logs and do not resend until the state is clear."
                 ),
-                "継続結果が不明です。ローカルのログを確認してください。".to_owned(),
+                "Continuation result unknown. Check local logs.".to_owned(),
             ));
         }
     };
@@ -733,10 +737,12 @@ async fn handle_approval_decision_message(
         let current_status = store
             .find_approval_request(request_id)?
             .map(|current| approval_status_name(current.status).to_owned())
-            .unwrap_or_else(|| "不明".to_owned());
+            .unwrap_or_else(|| "unknown".to_owned());
         return Ok(ApprovalDecisionReply::new(
-            format!("承認要求 `{request_id}` はすでに処理済みです。現在の状態: `{current_status}`"),
-            format!("すでに `{current_status}` です。"),
+            format!(
+                "Approval request `{request_id}` was already handled. Current status: `{current_status}`"
+            ),
+            format!("Already `{current_status}`."),
         ));
     }
     if let Some(message_id) = request.telegram_message_id {
@@ -768,9 +774,9 @@ async fn handle_approval_decision_message(
             )?;
             return Ok(ApprovalDecisionReply::new(
                 format!(
-                    "承認要求 `{request_id}` 自体は記録しましたが、その後の処理に失敗しました。ローカルのログを確認してください。"
+                    "Approval request `{request_id}` was recorded, but post-approval processing failed. Check local logs."
                 ),
-                "承認後の処理に失敗しました。ローカルのログを確認してください。".to_owned(),
+                "Post-approval processing failed. Check local logs.".to_owned(),
             ));
         }
     };
@@ -812,9 +818,9 @@ async fn handle_approval_decision_message(
         )?;
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "承認要求 `{request_id}` 自体は記録しましたが、新しい承認通知の保存に失敗しました。ローカルのログを確認してください。"
+                "Approval request `{request_id}` was recorded, but saving the next approval notification failed. Check local logs."
             ),
-            "次の承認通知の保存に失敗しました。".to_owned(),
+            "Failed to save the next approval notification.".to_owned(),
         ));
     }
     store.update_lane_state(&lane.lane_id, next_state, outcome.session_id.as_deref())?;
@@ -830,13 +836,13 @@ async fn handle_approval_decision_message(
     if outcome.approval_pending {
         return Ok(ApprovalDecisionReply::new(
             format!(
-                "{} 次の承認待ちを送信しました。",
+                "{} Sent the next approval request.",
                 format_approval_resolution_message(request_id, approved)
             ),
             if approved {
-                "承認を反映し、次の承認待ちを送信しました。".to_owned()
+                "Approval applied; sent the next approval request.".to_owned()
             } else {
-                "非承認を反映し、次の承認待ちを送信しました。".to_owned()
+                "Decline applied; sent the next approval request.".to_owned()
             },
         ));
     }
@@ -849,16 +855,16 @@ async fn handle_approval_decision_message(
             config.policy.max_output_chars,
         )
     } else if outcome.last_message.trim().is_empty() {
-        "承認後の応答本文を取得できませんでした。ローカルのログを確認してください。".to_owned()
+        "Could not read the response after approval. Check local logs.".to_owned()
     } else {
         truncate(&outcome.last_message, config.policy.max_output_chars)
     };
     Ok(ApprovalDecisionReply::new(
         reply,
         if approved {
-            "承認を反映しました。".to_owned()
+            "Approval applied.".to_owned()
         } else {
-            "非承認を反映しました。".to_owned()
+            "Decline applied.".to_owned()
         },
     ))
 }
@@ -1039,19 +1045,18 @@ fn format_runtime_failure_message() -> String {
 
 fn format_approval_pending_message(request_count: usize) -> String {
     if request_count <= 1 {
-        "承認待ちです。下の承認メッセージから続けてください。".to_owned()
+        "Approval is pending. Use the approval message below to continue.".to_owned()
     } else {
         format!(
-            "承認待ちです。{} 件の承認メッセージを送ったので、順番に処理してください。",
-            request_count
+            "Approval is pending. {request_count} approval messages were sent; handle them in order."
         )
     }
 }
 
 fn format_approval_resolution_message(request_id: &str, approved: bool) -> String {
     format!(
-        "承認要求 `{request_id}` を {} として受け付けました。",
-        if approved { "承認" } else { "非承認" }
+        "Approval request `{request_id}` was {}.",
+        if approved { "approved" } else { "declined" }
     )
 }
 
@@ -1094,9 +1099,9 @@ fn format_status_message(
     };
 
     let session = if lane.codex_session_id.is_some() {
-        "あり"
+        "yes"
     } else {
-        "なし"
+        "no"
     };
     let configured_budget = configured_extra_turn_budget(
         lane.mode,
@@ -1106,9 +1111,9 @@ fn format_status_message(
     let latest_request_id = pending_request_ids
         .last()
         .map(String::as_str)
-        .unwrap_or("なし");
+        .unwrap_or("none");
     format!(
-        "状態: `{}`\nworkspace: `{}`\nモード: `{}`\n{}\nセッション: {}\n未解決の承認要求: {}\n最新の承認要求: {}",
+        "status: `{}`\nworkspace: `{}`\nmode: `{}`\n{}\nsession: {}\npending approval requests: {}\nlatest approval request: {}",
         lane_state_name(lane.state),
         lane.workspace_id,
         lane_mode_name(lane.mode),
@@ -1176,7 +1181,7 @@ async fn persist_approval_requests(
             .find_approval_request(&request.request_id)?
             .ok_or_else(|| {
                 anyhow!(
-                    "承認要求の保存直後に行が見つかりません: {}",
+                    "approval request row missing immediately after insert: {}",
                     request.request_id
                 )
             })?;
@@ -1268,7 +1273,7 @@ async fn invalidate_pending_approval_notifications_for_restart(
 
     for pending_request in pending {
         let text = format!(
-            "承認要求 `{}` は bridge の再起動で無効になりました。元の依頼をもう一度送ってください。",
+            "Approval request `{}` was invalidated by a bridge restart. Send the original request again.",
             pending_request.request.request_id
         );
         let should_send_new_message = match pending_request.request.telegram_message_id {
@@ -1353,7 +1358,7 @@ async fn fail_resolving_approval_notifications(store: &Store, telegram: &impl Te
         }
 
         let text = format!(
-            "承認要求 `{}` は bridge の再起動中に継続結果を確定できませんでした。状態が不明です。元の依頼を再送する前にローカルのログを確認してください。",
+            "Approval request `{}` could not be finalized during bridge restart. The state is unknown; check local logs before resending the original request.",
             notification.request.request_id
         );
         let should_send_new_message = match notification.request.telegram_message_id {
@@ -1423,7 +1428,7 @@ async fn invalidate_dispatched_approval_notifications(
             );
         }
         let invalidated_text = format!(
-            "{}\n\nこの承認通知は内部エラーのため無効になりました。元の依頼をもう一度送ってください。",
+            "{}\n\nThis approval notification was invalidated by an internal error. Send the original request again.",
             dispatched_notice.text
         );
         let _ = telegram
@@ -1542,7 +1547,7 @@ fn build_approval_notice_parts(
     if request_kind == crate::store::ApprovalRequestKind::ToolUserInput {
         return ApprovalNotice {
             text: format!(
-                "{summary_text}\n\n要求 ID: `{request_id}`\n\nこの種類は Telegram からはまだ返せません。ローカル側で追加の入力が必要です。"
+                "{summary_text}\n\nRequest ID: `{request_id}`\n\nThis request type cannot be answered from Telegram yet. Additional local input is required."
             ),
             buttons: None,
         };
@@ -1550,14 +1555,14 @@ fn build_approval_notice_parts(
 
     let callback_target = approval_callback_locator(request_id, requested_at_ms);
     ApprovalNotice {
-        text: format!("{summary_text}\n\n要求 ID: `{request_id}`"),
+        text: format!("{summary_text}\n\nRequest ID: `{request_id}`"),
         buttons: Some(vec![
             crate::telegram::InlineKeyboardButton {
-                text: "承認".to_owned(),
+                text: "Approve".to_owned(),
                 callback_data: format!("approve:{callback_target}"),
             },
             crate::telegram::InlineKeyboardButton {
-                text: "非承認".to_owned(),
+                text: "Deny".to_owned(),
                 callback_data: format!("deny:{callback_target}"),
             },
         ]),
@@ -2308,8 +2313,8 @@ mod tests {
 
         let message =
             format_status_message(Some(lane), 3, vec!["req-1".to_owned(), "req-2".to_owned()]);
-        assert!(message.contains("未解決の承認要求: 2"));
-        assert!(message.contains("最新の承認要求: req-2"));
+        assert!(message.contains("pending approval requests: 2"));
+        assert!(message.contains("latest approval request: req-2"));
     }
 
     #[test]
@@ -2324,9 +2329,25 @@ mod tests {
         assert!(
             notice
                 .text
-                .contains("要求 ID: `approval-11111111-1111-1111-1111-111111111111`")
+                .contains("Request ID: `approval-11111111-1111-1111-1111-111111111111`")
         );
         assert_eq!(notice.buttons.as_ref().map(Vec::len), Some(2));
+        assert_eq!(
+            notice
+                .buttons
+                .as_ref()
+                .and_then(|buttons| buttons.first())
+                .map(|button| button.text.as_str()),
+            Some("Approve")
+        );
+        assert_eq!(
+            notice
+                .buttons
+                .as_ref()
+                .and_then(|buttons| buttons.get(1))
+                .map(|button| button.text.as_str()),
+            Some("Deny")
+        );
         assert_eq!(
             notice
                 .buttons
@@ -2346,7 +2367,7 @@ mod tests {
             crate::store::ApprovalRequestKind::ToolUserInput,
         );
 
-        assert!(notice.text.contains("Telegram からはまだ返せません"));
+        assert!(notice.text.contains("cannot be answered from Telegram yet"));
         assert!(notice.buttons.is_none());
     }
 
@@ -2397,7 +2418,7 @@ mod tests {
             .expect("approval request should exist");
         assert_eq!(request.status, crate::store::ApprovalRequestStatus::Pending);
         assert_eq!(request.resolved_by_sender_id, None);
-        assert!(reply.contains("この内部経路では承認操作を扱いません"));
+        assert!(reply.contains("This internal path does not handle approval decisions"));
     }
 
     #[test]
@@ -2452,7 +2473,7 @@ mod tests {
             crate::store::ApprovalRequestStatus::Approved
         );
         assert_eq!(request.resolved_by_sender_id, Some(99));
-        assert!(reply.contains("この内部経路では承認操作を扱いません"));
+        assert!(reply.contains("This internal path does not handle approval decisions"));
     }
 
     #[test]
@@ -2500,7 +2521,7 @@ mod tests {
             .expect("approval request should load")
             .expect("approval request should exist");
         assert_eq!(request.status, crate::store::ApprovalRequestStatus::Pending);
-        assert!(reply.contains("この内部経路では承認操作を扱いません"));
+        assert!(reply.contains("This internal path does not handle approval decisions"));
     }
 
     fn saved_attachment(
@@ -2662,12 +2683,12 @@ mod tests {
         assert_eq!(callback_answers.len(), 1);
         assert_eq!(
             callback_answers[0].text.as_deref(),
-            Some("すでに `approved` です。")
+            Some("Already `approved`.")
         );
 
         let sent_messages = telegram.sent_messages();
         assert_eq!(sent_messages.len(), 1);
-        assert!(sent_messages[0].text.contains("すでに処理済み"));
+        assert!(sent_messages[0].text.contains("already handled"));
     }
 
     #[tokio::test]
@@ -2706,8 +2727,15 @@ mod tests {
         .await
         .expect("approval decision should return a reply");
 
-        assert_eq!(reply.callback_text, "この種類は Telegram から返せません。");
-        assert!(reply.reply_text.contains("まだ処理できません"));
+        assert_eq!(
+            reply.callback_text,
+            "This request type cannot be answered from Telegram."
+        );
+        assert!(
+            reply
+                .reply_text
+                .contains("cannot be handled from Telegram yet")
+        );
         assert!(telegram.edited_messages().is_empty());
     }
 
@@ -2762,7 +2790,7 @@ mod tests {
         let edits = telegram.edited_messages();
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].message_id, 88);
-        assert!(edits[0].text.contains("bridge の再起動で無効"));
+        assert!(edits[0].text.contains("invalidated by a bridge restart"));
         assert!(telegram.sent_messages().is_empty());
     }
 

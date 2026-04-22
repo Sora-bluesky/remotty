@@ -87,8 +87,8 @@ pub async fn run_smoke(config_path: impl AsRef<Path>, scenario: SmokeScenario) -
     println!(
         "Approval request `{request_id}` is pending. Use Telegram to press `{}`.",
         match scenario {
-            SmokeScenario::ApprovalAccept => "承認",
-            SmokeScenario::ApprovalDecline => "非承認",
+            SmokeScenario::ApprovalAccept => "Approve",
+            SmokeScenario::ApprovalDecline => "Deny",
         }
     );
     wait_for_approval_status(

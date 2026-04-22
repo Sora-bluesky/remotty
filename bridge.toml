@@ -6,6 +6,7 @@ shutdown_grace_sec = 15
 [telegram]
 token_secret_ref = "remotty-telegram-bot"
 allowed_chat_types = ["private"]
+# Leave empty when you pair senders with the access-pair command.
 admin_sender_ids = []
 
 [codex]
@@ -29,10 +30,10 @@ max_turns_limit = 3
 
 [[workspaces]]
 id = "main"
-path = "C:/path/to/your/workspace"
+path = "C:/path/to/workspace"
 writable_roots = [
-  "C:/path/to/your/workspace"
+  "C:/path/to/workspace"
 ]
 default_mode = "await_reply"
-continue_prompt = "必要な確認を進めて、止まる理由がある時だけ要点を短く伝えてください。"
+continue_prompt = "Continue with the needed checks. If you must stop, reply with the short reason."
 checks_profile = "default"

@@ -582,26 +582,26 @@ fn summarize_command_approval(params: &Value) -> String {
     let command = params
         .get("command")
         .and_then(Value::as_str)
-        .unwrap_or("不明なコマンド");
+        .unwrap_or("unknown command");
     let cwd = params.get("cwd").and_then(Value::as_str);
     match cwd {
         Some(cwd) if !cwd.is_empty() => {
-            format!("コマンド実行の承認待ち: `{command}`\n作業場所: `{cwd}`")
+            format!("Command approval requested: `{command}`\nWorking directory: `{cwd}`")
         }
-        _ => format!("コマンド実行の承認待ち: `{command}`"),
+        _ => format!("Command approval requested: `{command}`"),
     }
 }
 
 fn summarize_file_change_approval(params: &Value) -> String {
     if let Some(grant_root) = params.get("grantRoot").and_then(Value::as_str) {
-        return format!("ファイル変更の承認待ち: `{grant_root}` への書き込み");
+        return format!("File change approval requested: write access to `{grant_root}`");
     }
     if let Some(reason) = params.get("reason").and_then(Value::as_str) {
         if !reason.trim().is_empty() {
-            return format!("ファイル変更の承認待ち: {reason}");
+            return format!("File change approval requested: {reason}");
         }
     }
-    "ファイル変更の承認待ち".to_owned()
+    "File change approval requested".to_owned()
 }
 
 fn summarize_permissions_approval(params: &Value) -> String {
@@ -609,8 +609,8 @@ fn summarize_permissions_approval(params: &Value) -> String {
         .get("reason")
         .and_then(Value::as_str)
         .filter(|reason| !reason.trim().is_empty())
-        .unwrap_or("追加の権限が必要です。");
-    format!("追加権限の承認待ち: {reason}")
+        .unwrap_or("Additional permissions are required.");
+    format!("Permission approval requested: {reason}")
 }
 
 fn summarize_tool_user_input(params: &Value) -> String {

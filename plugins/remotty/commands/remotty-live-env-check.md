@@ -4,14 +4,14 @@ Check whether the live smoke can resolve its inputs without printing secret valu
 
 ## Workflow
 
-1. Work from the package or repo root that contains `bridge.toml`.
-2. Run `remotty telegram live-env-check`.
-3. If a non-default config is needed, run `remotty telegram live-env-check --config <path>`.
+1. Resolve the user config path: `$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"`.
+2. Run `remotty telegram live-env-check --config $configPath`.
+3. If a different config is needed, run `remotty telegram live-env-check --config <path>`.
 4. Summarize which values are set, stored, inferred, defaulted, missing, or ambiguous.
 5. Summarize the webhook status as `polling-ready`, `webhook-configured`, or `unknown`.
 
-If the `remotty` command is unavailable in a source checkout, fall back to
-`cargo run -- telegram live-env-check`.
+Only for repo contributors: if the `remotty` command is unavailable in a source checkout, fall back to
+`cargo run -- telegram live-env-check --config $configPath`.
 
 ## Output requirements
 

@@ -1,7 +1,7 @@
 {
   "name": "remotty",
-  "version": "0.1.14",
-  "description": "Plugin-first setup and operations for the remotty Windows local agent bridge.",
+  "version": "0.1.22",
+  "description": "Setup and operations for the remotty Windows bridge for Codex and Telegram.",
   "author": {
     "name": "Sora-bluesky",
     "url": "https://github.com/Sora-bluesky/remotty"
@@ -18,8 +18,8 @@
   ],
   "interface": {
     "displayName": "remotty",
-    "shortDescription": "Set up and run the Windows local agent bridge from plugin commands",
-    "longDescription": "Use plugin commands to configure the Telegram bot token, pair an allowed sender, start or inspect the bridge, and run live checks without exposing secrets in repo-tracked files.",
+    "shortDescription": "Set up and run the Windows Codex Telegram bridge from plugin commands",
+    "longDescription": "Use plugin commands to configure the Telegram bot token, pair an allowed sender, start or inspect the bridge, and run live checks without exposing secrets in terminal output.",
     "developerName": "Sora-bluesky",
     "category": "Coding",
     "capabilities": [

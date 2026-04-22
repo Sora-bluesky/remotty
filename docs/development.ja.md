@@ -22,9 +22,17 @@ pwsh -NoProfile -File scripts/audit-doc-terminology.ps1
 gitleaks git --log-opts=--all --redact --verbose .
 ```
 
+秘密情報の検査は、次の層で行います。
+
+| 層 | 実装 | 範囲 |
+| --- | --- | --- |
+| 事前確認 | `git-guard` 相当の正規表現を使うグローバル `~/.git-hooks/pre-commit` | ステージ済み差分 |
+| CI | `.github/workflows/gitleaks.yml` の Gitleaks GitHub Action | push と pull request の変更 |
+| 手動の全履歴確認 | `gitleaks git --log-opts=--all --redact --verbose .` | git の全履歴 |
+
 ## `npm registry` への公開
 
-GitHub Release には、`remotty.tgz` と `remotty-0.1.21.tgz` のような版数付きパッケージを添付します。
+GitHub Release には、`remotty.tgz` と `remotty-0.1.x.tgz` のような版数付きパッケージを添付します。
 リリース用ワークフローは、GitHub Actions の secret に `NPM_TOKEN` がある時だけ、版数付きパッケージを `npm registry` へ公開します。
 
 `remotty` パッケージを管理できる `npm` アカウントで token を作ります。
@@ -51,9 +59,9 @@ npm publish .\release\remotty.tgz
 手動スモークは任意です。CI では動きません。
 実行前に、`remotty` の設定を済ませてください。
 
-1. `/remotty-configure` で Telegram bot token を保存します。
-2. `/remotty-access-pair <code>` で自分の Telegram sender を allowlist に追加します。
-3. `/remotty-live-env-check` で実機スモークの入力を確認します。
+1. `remotty telegram configure --config C:/path/to/custom-bridge.toml` で Telegram bot token を保存します。
+2. `remotty telegram access-pair <code> --config C:/path/to/custom-bridge.toml` で自分の Telegram sender を allowlist に追加します。
+3. `remotty telegram live-env-check --config C:/path/to/custom-bridge.toml` で実機スモークの入力を確認します。
 
 手動スモークは、保存済みの token と pairing 済み sender を使います。
 pairing 済み sender が1件なら、`chat_id` と `sender_id` は自動で決まります。
@@ -90,20 +98,19 @@ remotty telegram live-env-check
 既定ではない設定ファイルを使う場合:
 
 ```powershell
-remotty telegram live-env-check --config bridge.local.toml
+remotty telegram live-env-check --config C:/path/to/custom-bridge.toml
 ```
 
 次に、承認して続ける経路を確認します。
 
 ```powershell
-remotty telegram smoke approval accept --config bridge.toml
+remotty telegram smoke approval accept --config C:/path/to/custom-bridge.toml
 ```
 
 非承認で安全側へ止まる経路は、次です。
 
 ```powershell
-$env:LIVE_APPROVAL_MODE = "app_server"
-remotty telegram smoke approval decline --config bridge.toml
+remotty telegram smoke approval decline --config C:/path/to/custom-bridge.toml
 ```
 
 できれば手動スモーク専用の bot、チャット、作業フォルダを使ってください。

@@ -406,11 +406,11 @@ async fn bridge_records_approval_accept_and_decline_against_fake_telegram_server
             };
             assert!(callbacks.iter().any(|answer| {
                 answer.callback_query_id == "callback-1"
-                    && answer.text.as_deref() == Some("承認を記録しました。")
+                    && answer.text.as_deref() == Some("Approval recorded.")
             }));
             assert!(callbacks.iter().any(|answer| {
                 answer.callback_query_id == "callback-2"
-                    && answer.text.as_deref() == Some("非承認を記録しました。")
+                    && answer.text.as_deref() == Some("Decline recorded.")
             }));
 
             let edited = tokio::select! {
@@ -423,18 +423,18 @@ async fn bridge_records_approval_accept_and_decline_against_fake_telegram_server
             assert!(
                 edited.iter().any(|message| {
                     message.message_id == 101
-                        && message.text.contains(
-                            "承認要求 `approval-accept-fake` を 承認 として受け付けました。",
-                        )
+                        && message
+                            .text
+                            .contains("Approval request `approval-accept-fake` was approved.")
                 }),
                 "edited messages: {edited:?}"
             );
             assert!(
                 edited.iter().any(|message| {
                     message.message_id == 102
-                        && message.text.contains(
-                            "承認要求 `approval-decline-fake` を 非承認 として受け付けました。",
-                        )
+                        && message
+                            .text
+                            .contains("Approval request `approval-decline-fake` was declined.")
                 }),
                 "edited messages: {edited:?}"
             );

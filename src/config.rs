@@ -150,14 +150,33 @@ fn default_telegram_file_base_url() -> String {
     "https://api.telegram.org/file".to_owned()
 }
 
+fn resolve_relative_path(base_dir: &Path, value: &Path) -> PathBuf {
+    if value.is_absolute() {
+        value.to_path_buf()
+    } else {
+        base_dir.join(value)
+    }
+}
+
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read config file: {}", path.display()))?;
-        let config: Self = toml::from_str(&raw).context("failed to parse bridge.toml")?;
+        let mut config: Self = toml::from_str(&raw).context("failed to parse bridge.toml")?;
+        config.resolve_relative_paths(path);
         config.validate()?;
         Ok(config)
+    }
+
+    fn resolve_relative_paths(&mut self, path: &Path) {
+        let Some(base_dir) = path.parent() else {
+            return;
+        };
+        self.storage.db_path = resolve_relative_path(base_dir, &self.storage.db_path);
+        self.storage.state_dir = resolve_relative_path(base_dir, &self.storage.state_dir);
+        self.storage.temp_dir = resolve_relative_path(base_dir, &self.storage.temp_dir);
+        self.storage.log_dir = resolve_relative_path(base_dir, &self.storage.log_dir);
     }
 
     fn validate(&self) -> Result<()> {

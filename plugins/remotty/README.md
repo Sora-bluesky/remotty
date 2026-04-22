@@ -1,7 +1,6 @@
 # remotty plugin
 
-This local plugin wraps the `remotty` Rust bridge with user-facing Codex
-commands.
+This local plugin wraps the `remotty` bridge with user-facing Codex commands.
 
 Use it for:
 
@@ -15,8 +14,8 @@ Use it for:
 Available commands:
 
 - `/remotty-configure`
-- `/remotty-access-pair`
-- `/remotty-pair`
+- `/remotty-access-pair`: pair from a code returned by the running Telegram bridge
+- `/remotty-pair`: fallback pairing when the bridge cannot reply with a code
 - `/remotty-policy-allowlist`
 - `/remotty-start`
 - `/remotty-status`
@@ -26,5 +25,5 @@ Available commands:
 - `/remotty-smoke-approval-accept`
 - `/remotty-smoke-approval-decline`
 
-The plugin lives in `plugins/remotty/` and is listed by the repo-local
+The plugin lives in `plugins/remotty/` and is listed by the package-local
 marketplace in `.agents/plugins/marketplace.json`.

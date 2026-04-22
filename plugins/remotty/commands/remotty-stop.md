@@ -1,14 +1,13 @@
 # /remotty-stop
 
-Stop the local bridge for this repo.
+Stop the local bridge.
 
 ## Workflow
 
-1. Work from the package or repo root that contains `bridge.toml`.
-2. If the Windows service is installed and running, run `remotty service stop`.
-3. Otherwise explain that the foreground process must be stopped in its own terminal.
+1. If the Windows service is installed and running, run `remotty service stop`.
+2. Otherwise explain that the foreground process must be stopped in its own terminal with Ctrl+C or by closing that terminal.
 
-If the `remotty` command is unavailable in a source checkout, fall back to
+Only for repo contributors: if the `remotty` command is unavailable in a source checkout, fall back to
 `cargo run -- service stop`.
 
 ## Output requirements

@@ -2,13 +2,13 @@
 
 Use `remotty demo fakechat` when you want to try the local chat loop before creating a Telegram bot.
 
-The demo starts a browser chat UI on `localhost`, sends each message to the local `codex` CLI, and shows the reply in the same page. It does not use Telegram, bot tokens, webhooks, DPAPI, or a public server.
+The demo starts a browser chat UI on `localhost`, sends each message to the local Codex CLI, and shows the reply in the same page. It does not use Telegram, bot tokens, webhooks, DPAPI, or a public server.
 
 ## What You Need
 
 - Windows 10 or Windows 11
 - `remotty`
-- `codex` CLI available on `PATH`
+- Codex CLI available on `PATH`
 
 ## Start the Demo
 
@@ -43,13 +43,13 @@ remotty demo fakechat --port 8790
 Use a specific workspace:
 
 ```powershell
-remotty demo fakechat --workspace C:\Users\you\Documents\project
+remotty demo fakechat --workspace C:/Users/you/Documents/project
 ```
 
 Use a specific Codex binary or model:
 
 ```powershell
-remotty demo fakechat --codex-binary codex --model gpt-5.4-mini
+remotty demo fakechat --codex-binary codex --model <your-codex-model>
 ```
 
 ## How This Differs From Telegram
