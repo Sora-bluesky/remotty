@@ -295,7 +295,7 @@
         }
         @{
             Version = "0.2.7"
-            Commit = "0000000000000000000000000000000000000000"
+            Commit = "5b2dd7c2962d64696c3c5898e7965ffddbab04f5"
             Title = "Codex App project registration"
             Notes = @(
                 "Added a config workspace upsert command that registers the current project without hand-editing bridge.toml."
