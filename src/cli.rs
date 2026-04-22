@@ -61,6 +61,10 @@ pub enum TelegramCommand {
     LiveEnvCheck {
         config_path: PathBuf,
     },
+    Sessions {
+        filter: Option<String>,
+        config_path: PathBuf,
+    },
     Smoke {
         scenario: TelegramSmokeScenario,
         config_path: PathBuf,
@@ -197,6 +201,28 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
                 config_path: PathBuf::from(value),
             }))
         }
+        [action] if action == "sessions" => Ok(CliCommand::Telegram(TelegramCommand::Sessions {
+            filter: None,
+            config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+        })),
+        [action, flag, value] if action == "sessions" && flag == "--config" => {
+            Ok(CliCommand::Telegram(TelegramCommand::Sessions {
+                filter: None,
+                config_path: PathBuf::from(value),
+            }))
+        }
+        [action, filter] if action == "sessions" => {
+            Ok(CliCommand::Telegram(TelegramCommand::Sessions {
+                filter: Some(filter.clone()),
+                config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+            }))
+        }
+        [action, filter, flag, value] if action == "sessions" && flag == "--config" => {
+            Ok(CliCommand::Telegram(TelegramCommand::Sessions {
+                filter: Some(filter.clone()),
+                config_path: PathBuf::from(value),
+            }))
+        }
         [action, subaction, scenario] if action == "smoke" && subaction == "approval" => {
             Ok(CliCommand::Telegram(TelegramCommand::Smoke {
                 scenario: parse_smoke_scenario(scenario)?,
@@ -212,7 +238,7 @@ fn parse_telegram_command(args: &[String]) -> Result<CliCommand> {
             }))
         }
         _ => bail!(
-            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram access-pair <code> [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check [--config <path>] | telegram smoke approval <accept|decline> [--config <path>]"
+            "usage: telegram configure [--config <path>] | telegram pair [--config <path>] | telegram access-pair <code> [--config <path>] | telegram policy allowlist [--config <path>] | telegram live-env-check [--config <path>] | telegram sessions [filter] [--config <path>] | telegram smoke approval <accept|decline> [--config <path>]"
         ),
     }
 }
@@ -465,6 +491,36 @@ mod tests {
             ])
             .expect("telegram live-env-check --config should parse"),
             CliCommand::Telegram(TelegramCommand::LiveEnvCheck {
+                config_path: PathBuf::from("custom.toml"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_telegram_sessions() {
+        assert_eq!(
+            parse_args(vec!["telegram".to_owned(), "sessions".to_owned(),])
+                .expect("telegram sessions should parse"),
+            CliCommand::Telegram(TelegramCommand::Sessions {
+                filter: None,
+                config_path: PathBuf::from("bridge.toml"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_telegram_sessions_filter_with_config() {
+        assert_eq!(
+            parse_args(vec![
+                "telegram".to_owned(),
+                "sessions".to_owned(),
+                "thread".to_owned(),
+                "--config".to_owned(),
+                "custom.toml".to_owned(),
+            ])
+            .expect("telegram sessions filter should parse"),
+            CliCommand::Telegram(TelegramCommand::Sessions {
+                filter: Some("thread".to_owned()),
                 config_path: PathBuf::from("custom.toml"),
             })
         );

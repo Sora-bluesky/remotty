@@ -197,6 +197,8 @@ Inside Telegram, you can use:
 /deny <request_id>       # deny a pending request from chat text
 /workspace               # show the current workspace and available IDs
 /workspace docs          # switch this chat to another workspace
+/remotty-sessions        # list saved Codex threads
+/remotty-sessions <id>   # bind this chat to a saved Codex thread
 /mode completion_checks  # continue only after local checks fail
 /mode infinite           # keep continuing until Codex stops naturally
 /mode max_turns 3        # continue automatically up to 3 times
@@ -298,6 +300,7 @@ Common equivalents are:
 - plugin `/remotty-start` -> `remotty --config $configPath`
 - plugin `/remotty-stop` -> stop the Windows service when installed; for a foreground bridge, close or interrupt its terminal
 - plugin `/remotty-status` -> `remotty service status`; this reports the Windows service state, not a foreground bridge in another terminal
+- plugin `/remotty-sessions` -> `remotty telegram sessions --config $configPath`
 - plugin `/remotty-fakechat-demo` -> `remotty demo fakechat`
 - plugin `/remotty-live-env-check` -> `remotty telegram live-env-check`
 - plugin `/remotty-smoke-approval-accept` -> `remotty telegram smoke approval accept --config $configPath`

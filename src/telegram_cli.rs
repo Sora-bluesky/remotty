@@ -6,6 +6,8 @@ use chrono::Utc;
 use rand::{Rng, distributions::Alphanumeric, rngs::OsRng};
 use rpassword as hidden_input;
 
+use crate::app_server::CodexThreadSummary;
+use crate::codex::CodexRunner;
 use crate::config::Config;
 use crate::store::{AuthorizedSender, PendingAccessPairCode, Store};
 use crate::telegram::{PairingUpdate, TelegramClient, TelegramPoller};
@@ -228,6 +230,28 @@ pub async fn live_env_check(config_path: impl AsRef<Path>) -> Result<String> {
         lines.push(format!("- `{key}`: {}", env_presence(key)));
     }
     Ok(lines.join("\n"))
+}
+
+pub async fn sessions(config_path: impl AsRef<Path>, filter: Option<&str>) -> Result<String> {
+    let config = Config::load(config_path.as_ref())?;
+    let runner = CodexRunner::new(config.codex.clone());
+    let threads = runner.list_threads(10, filter).await?;
+    Ok(format_sessions_summary(&threads))
+}
+
+fn format_sessions_summary(threads: &[CodexThreadSummary]) -> String {
+    if threads.is_empty() {
+        return "No Codex threads returned.".to_owned();
+    }
+    let mut lines = vec!["Codex threads:".to_owned()];
+    for thread in threads.iter().take(10) {
+        let title = thread.title.as_deref().unwrap_or("untitled");
+        let cwd = thread.cwd.as_deref().unwrap_or("cwd unavailable");
+        lines.push(format!("- `{}` {title}", thread.thread_id));
+        lines.push(format!("  cwd: `{cwd}`"));
+    }
+    lines.push("Telegram select: `/remotty-sessions <thread_id>`".to_owned());
+    lines.join("\n")
 }
 
 fn resolve_secret_ref(config_path: &Path) -> Result<String> {

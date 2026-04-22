@@ -78,6 +78,32 @@ pub struct LaneRecord {
     pub waiting_since_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexThreadBinding {
+    pub chat_id: i64,
+    pub thread_key: String,
+    pub codex_thread_id: String,
+    pub workspace_id: String,
+    pub title: Option<String>,
+    pub cwd: Option<String>,
+    pub model: Option<String>,
+    pub codex_updated_at: Option<String>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewCodexThreadBinding {
+    pub chat_id: i64,
+    pub thread_key: String,
+    pub codex_thread_id: String,
+    pub workspace_id: String,
+    pub title: Option<String>,
+    pub cwd: Option<String>,
+    pub model: Option<String>,
+    pub codex_updated_at: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewRun {
     pub lane_id: String,
@@ -279,6 +305,20 @@ impl Store {
                 exit_code INTEGER,
                 completion_reason TEXT,
                 approval_pending INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS codex_thread_bindings (
+                chat_id INTEGER NOT NULL,
+                thread_key TEXT NOT NULL,
+                codex_thread_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
+                title TEXT,
+                cwd TEXT,
+                model TEXT,
+                codex_updated_at TEXT,
+                created_at_ms INTEGER NOT NULL,
+                updated_at_ms INTEGER NOT NULL,
+                PRIMARY KEY(chat_id, thread_key)
             );
 
             CREATE TABLE IF NOT EXISTS telegram_updates (
@@ -1789,6 +1829,80 @@ impl Store {
         Ok(true)
     }
 
+    pub fn upsert_codex_thread_binding(
+        &self,
+        binding: NewCodexThreadBinding,
+    ) -> Result<CodexThreadBinding> {
+        let now = Utc::now().timestamp_millis();
+        let chat_id = binding.chat_id;
+        let thread_key = binding.thread_key.clone();
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                INSERT INTO codex_thread_bindings(
+                    chat_id, thread_key, codex_thread_id, workspace_id, title, cwd, model,
+                    codex_updated_at, created_at_ms, updated_at_ms
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+                ON CONFLICT(chat_id, thread_key) DO UPDATE SET
+                    codex_thread_id = excluded.codex_thread_id,
+                    workspace_id = excluded.workspace_id,
+                    title = excluded.title,
+                    cwd = excluded.cwd,
+                    model = excluded.model,
+                    codex_updated_at = excluded.codex_updated_at,
+                    updated_at_ms = excluded.updated_at_ms
+                "#,
+                params![
+                    chat_id,
+                    thread_key,
+                    binding.codex_thread_id,
+                    binding.workspace_id,
+                    binding.title,
+                    binding.cwd,
+                    binding.model,
+                    binding.codex_updated_at,
+                    now,
+                ],
+            )
+        })?;
+        self.find_codex_thread_binding(chat_id, &thread_key)?
+            .ok_or_else(|| anyhow!("codex thread binding was not saved"))
+    }
+
+    pub fn find_codex_thread_binding(
+        &self,
+        chat_id: i64,
+        thread_key: &str,
+    ) -> Result<Option<CodexThreadBinding>> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                r#"
+                SELECT chat_id, thread_key, codex_thread_id, workspace_id, title, cwd, model,
+                       codex_updated_at, created_at_ms, updated_at_ms
+                FROM codex_thread_bindings
+                WHERE chat_id = ?1 AND thread_key = ?2
+                "#,
+                params![chat_id, thread_key],
+                |row| {
+                    Ok(CodexThreadBinding {
+                        chat_id: row.get(0)?,
+                        thread_key: row.get(1)?,
+                        codex_thread_id: row.get(2)?,
+                        workspace_id: row.get(3)?,
+                        title: row.get(4)?,
+                        cwd: row.get(5)?,
+                        model: row.get(6)?,
+                        codex_updated_at: row.get(7)?,
+                        created_at_ms: row.get(8)?,
+                        updated_at_ms: row.get(9)?,
+                    })
+                },
+            )
+            .optional()
+        })
+    }
+
     pub fn insert_message(
         &self,
         lane_id: &str,
@@ -2248,6 +2362,69 @@ mod tests {
         assert_eq!(fetched.lane_id, created.lane_id);
         assert_eq!(fetched.chat_id, 42);
         assert_eq!(fetched.thread_key, "555");
+    }
+
+    #[test]
+    fn codex_thread_binding_round_trip_uses_chat_and_thread_key() {
+        let (_dir, store) = temp_store();
+
+        let saved = store
+            .upsert_codex_thread_binding(NewCodexThreadBinding {
+                chat_id: 42,
+                thread_key: "dm".to_owned(),
+                codex_thread_id: "thread-1".to_owned(),
+                workspace_id: "main".to_owned(),
+                title: Some("Fix tests".to_owned()),
+                cwd: Some("C:/workspace".to_owned()),
+                model: Some("gpt-5.4".to_owned()),
+                codex_updated_at: Some("2026-04-22T00:00:00Z".to_owned()),
+            })
+            .expect("save binding");
+
+        let fetched = store
+            .find_codex_thread_binding(42, "dm")
+            .expect("find binding")
+            .expect("binding exists");
+
+        assert_eq!(fetched, saved);
+        assert_eq!(fetched.codex_thread_id, "thread-1");
+        assert_eq!(fetched.workspace_id, "main");
+        assert!(fetched.created_at_ms <= fetched.updated_at_ms);
+    }
+
+    #[test]
+    fn codex_thread_binding_upsert_replaces_thread_for_same_chat() {
+        let (_dir, store) = temp_store();
+
+        store
+            .upsert_codex_thread_binding(NewCodexThreadBinding {
+                chat_id: 42,
+                thread_key: "dm".to_owned(),
+                codex_thread_id: "thread-1".to_owned(),
+                workspace_id: "main".to_owned(),
+                title: None,
+                cwd: None,
+                model: None,
+                codex_updated_at: None,
+            })
+            .expect("save first binding");
+        let updated = store
+            .upsert_codex_thread_binding(NewCodexThreadBinding {
+                chat_id: 42,
+                thread_key: "dm".to_owned(),
+                codex_thread_id: "thread-2".to_owned(),
+                workspace_id: "other".to_owned(),
+                title: Some("Continue".to_owned()),
+                cwd: None,
+                model: None,
+                codex_updated_at: None,
+            })
+            .expect("update binding");
+
+        assert_eq!(updated.codex_thread_id, "thread-2");
+        assert_eq!(updated.workspace_id, "other");
+        assert_eq!(updated.title.as_deref(), Some("Continue"));
+        assert!(updated.created_at_ms <= updated.updated_at_ms);
     }
 
     #[test]

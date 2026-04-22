@@ -137,7 +137,24 @@ What files are in the current workspace?
 
 `remotty` receives the message, runs the Codex CLI locally, and sends the reply back to the same Telegram chat.
 
-## 8. Run Manual Smoke Checks
+## 8. Bind a Saved Codex Thread
+
+To list saved Codex threads, run:
+
+```text
+/remotty-sessions
+```
+
+To bind this Telegram chat to one thread, run:
+
+```text
+/remotty-sessions <thread_id>
+```
+
+The binding is stored in the configured remotty state database.
+If the thread id is not found, run `/remotty-sessions` again and choose from the latest list.
+
+## 9. Run Manual Smoke Checks
 
 Manual smoke checks are optional. They use the real Telegram bot and a local temporary workspace.
 The smoke commands create a temporary `app_server` run. You do not need to change your normal `codex.transport = "exec"` setting for regular use.

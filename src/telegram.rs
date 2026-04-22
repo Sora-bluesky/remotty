@@ -62,6 +62,9 @@ pub enum TelegramControlCommand {
     Workspace {
         workspace_id: Option<String>,
     },
+    Sessions {
+        thread_id: Option<String>,
+    },
     Mode {
         mode: String,
         max_turns: Option<i64>,
@@ -908,6 +911,16 @@ pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
             workspace_id: workspace_id.filter(|value| !value.is_empty()),
         });
     }
+    if command.eq_ignore_ascii_case("sessions") || command.eq_ignore_ascii_case("remotty-sessions")
+    {
+        let thread_id = parts.next().map(|value| value.trim().to_owned());
+        if parts.next().is_some() {
+            return None;
+        }
+        return Some(TelegramControlCommand::Sessions {
+            thread_id: thread_id.filter(|value| !value.is_empty()),
+        });
+    }
     if command.eq_ignore_ascii_case("mode") {
         let mode = parts.next()?.trim().to_ascii_lowercase();
         if mode.is_empty() {
@@ -1457,6 +1470,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_sessions_command_without_id() {
+        assert_eq!(
+            parse_control_command("/remotty-sessions"),
+            Some(TelegramControlCommand::Sessions { thread_id: None })
+        );
+    }
+
+    #[test]
+    fn parses_sessions_command_with_id() {
+        assert_eq!(
+            parse_control_command("/sessions thread-1"),
+            Some(TelegramControlCommand::Sessions {
+                thread_id: Some("thread-1".to_owned())
+            })
+        );
+    }
+
+    #[test]
     fn parses_stop_command() {
         assert_eq!(
             TelegramControlCommand::parse("/stop"),
@@ -1548,6 +1579,7 @@ mod tests {
         assert_eq!(parse_control_command("/approve req extra"), None);
         assert_eq!(parse_control_command("/deny req extra"), None);
         assert_eq!(parse_control_command("/workspace docs extra"), None);
+        assert_eq!(parse_control_command("/remotty-sessions a b"), None);
     }
 
     #[test]

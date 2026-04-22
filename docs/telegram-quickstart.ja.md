@@ -138,7 +138,24 @@ What files are in the current workspace?
 
 `remotty` がメッセージを受け取り、手元の Codex CLI を動かし、同じ Telegram チャットへ返信します。
 
-## 8. 手動スモークを実行する
+## 8. 保存済み Codex スレッドを選ぶ
+
+保存済みスレッドを一覧します。
+
+```text
+/remotty-sessions
+```
+
+この Telegram チャットへスレッドを対応付けます。
+
+```text
+/remotty-sessions <thread_id>
+```
+
+対応付けは、設定済みの `remotty` 状態データベースへ保存します。
+ID が見つからない場合は、`/remotty-sessions` で最新の一覧を見直してください。
+
+## 9. 手動スモークを実行する
 
 手動スモークは任意です。実 Telegram bot とローカルの一時 workspace を使います。
 スモークコマンドは一時的な `app_server` 実行を作ります。普段使う `codex.transport = "exec"` は変えなくて構いません。

@@ -215,5 +215,16 @@
                 "Updated public-surface tests to keep the README focused on the short npm install command."
             )
         }
+        @{
+            Version = "0.2.0"
+            Commit = "4195c31a1a027e01fc02220aeed469d5a6f527bc"
+            Title = "Codex App session feasibility"
+            Notes = @(
+                "Documented the product shift toward returning to an existing Codex App session instead of starting a separate Codex CLI run."
+                "Added guarded app-server version checks and thread listing support as the first supported local session interface."
+                "Added Telegram session-selection commands so chats can bind to an available Codex App thread when the interface is present."
+                "Added a release coverage audit that blocks the next source version until the completed release is recorded and tagged."
+            )
+        }
     )
 }

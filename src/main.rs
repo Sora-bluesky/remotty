@@ -91,6 +91,16 @@ async fn main() -> Result<()> {
             println!("{}", telegram_cli::live_env_check(config_path).await?);
             Ok(())
         }
+        CliCommand::Telegram(TelegramCommand::Sessions {
+            filter,
+            config_path,
+        }) => {
+            println!(
+                "{}",
+                telegram_cli::sessions(config_path, filter.as_deref()).await?
+            );
+            Ok(())
+        }
         CliCommand::Telegram(TelegramCommand::Smoke {
             scenario,
             config_path,

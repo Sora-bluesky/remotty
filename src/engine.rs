@@ -4,12 +4,14 @@ use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::app_server::CodexThreadSummary;
 use crate::codex::{CodexRequest, CodexRunner};
 use crate::config::{
     CodexTransport, Config, LaneMode, checks::CheckRunSummary, checks::run_profile,
 };
 use crate::store::{
-    ApprovalRequestStatus, ApprovalRequestTransport, LaneRecord, LaneState, NewRun, Store,
+    ApprovalRequestStatus, ApprovalRequestTransport, LaneRecord, LaneState, NewCodexThreadBinding,
+    NewRun, Store,
 };
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
@@ -279,6 +281,19 @@ async fn handle_message(
                 };
                 (result.map(|reply| reply.reply_text), Some(callback_text))
             }
+            TelegramControlCommand::Sessions { thread_id } => {
+                let result = handle_sessions_command(
+                    store,
+                    config,
+                    codex,
+                    update.chat_id,
+                    &update.thread_key,
+                    existing_lane.as_ref(),
+                    thread_id.as_deref(),
+                )
+                .await;
+                (result, None)
+            }
             other => handle_control_command(
                 store,
                 config,
@@ -536,11 +551,64 @@ fn handle_control_command(
                 format_lane_mode_details(mode, extra_turn_budget)
             ))
         }
+        TelegramControlCommand::Sessions { .. } => Ok(
+            "This internal path does not handle session selection. Use the async handler."
+                .to_owned(),
+        ),
         TelegramControlCommand::Approve { .. } | TelegramControlCommand::Deny { .. } => Ok(
             "This internal path does not handle approval decisions. Use a normal Telegram message or button."
                 .to_owned(),
         ),
     }
+}
+
+async fn handle_sessions_command(
+    store: &Store,
+    config: &Config,
+    codex: &CodexRunner,
+    chat_id: i64,
+    thread_key: &str,
+    lane: Option<&LaneRecord>,
+    thread_id: Option<&str>,
+) -> Result<String> {
+    let Some(thread_id) = thread_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        let threads = codex.list_threads(10, None).await?;
+        return Ok(format_sessions_message(&threads));
+    };
+
+    let threads = codex.list_threads(25, Some(thread_id)).await?;
+    let Some(selected) = find_selected_thread(&threads, thread_id) else {
+        return Ok(format_thread_not_found_message(thread_id));
+    };
+    let workspace = resolve_workspace(config, lane)?;
+    store.upsert_codex_thread_binding(NewCodexThreadBinding {
+        chat_id,
+        thread_key: thread_key.to_owned(),
+        codex_thread_id: selected.thread_id.clone(),
+        workspace_id: workspace.id.clone(),
+        title: selected.title.clone(),
+        cwd: selected.cwd.clone(),
+        model: selected.model.clone(),
+        codex_updated_at: selected.updated_at.clone(),
+    })?;
+    Ok(format!(
+        "この会話を Codex スレッド `{}` に対応付けました。\n次の入力から、このスレッドへ戻せるようになります。",
+        selected.thread_id
+    ))
+}
+
+fn find_selected_thread<'a>(
+    threads: &'a [CodexThreadSummary],
+    thread_id: &str,
+) -> Option<&'a CodexThreadSummary> {
+    threads
+        .iter()
+        .find(|thread| thread.thread_id.eq_ignore_ascii_case(thread_id))
+        .or_else(|| {
+            threads
+                .iter()
+                .find(|thread| thread.thread_id.starts_with(thread_id))
+        })
 }
 
 async fn handle_approval_decision_message(
@@ -1081,6 +1149,8 @@ fn format_help_message() -> String {
         "/deny <request_id>",
         "/workspace",
         "/workspace <id>",
+        "/remotty-sessions",
+        "/remotty-sessions <thread_id>",
         "/mode await_reply",
         "/mode completion_checks",
         "/mode infinite",
@@ -1144,6 +1214,25 @@ fn format_workspace_message(
             .join("\n"),
         lane_mode_name(mode),
         format_lane_mode_details(mode, configured_budget)
+    )
+}
+
+fn format_sessions_message(threads: &[CodexThreadSummary]) -> String {
+    if threads.is_empty() {
+        return "保存済みの Codex スレッドは見つかりませんでした。".to_owned();
+    }
+    let mut lines = vec!["保存済みの Codex スレッド:".to_owned()];
+    for thread in threads.iter().take(10) {
+        let title = thread.title.as_deref().unwrap_or("タイトルなし");
+        lines.push(format!("- `{}` {}", thread.thread_id, title));
+    }
+    lines.push("選択: `/remotty-sessions <thread_id>`".to_owned());
+    lines.join("\n")
+}
+
+fn format_thread_not_found_message(thread_id: &str) -> String {
+    format!(
+        "Codex スレッド `{thread_id}` は見つかりませんでした。\n`/remotty-sessions` で最新の一覧を確認し、表示された ID を指定してください。"
     )
 }
 
@@ -2522,6 +2611,45 @@ mod tests {
             .expect("approval request should exist");
         assert_eq!(request.status, crate::store::ApprovalRequestStatus::Pending);
         assert!(reply.contains("This internal path does not handle approval decisions"));
+    }
+
+    #[test]
+    fn format_sessions_message_includes_selection_command() {
+        let message = format_sessions_message(&[CodexThreadSummary {
+            thread_id: "thread-1".to_owned(),
+            title: Some("Fix tests".to_owned()),
+            cwd: None,
+            model: None,
+            updated_at: None,
+        }]);
+
+        assert!(message.contains("thread-1"));
+        assert!(message.contains("Fix tests"));
+        assert!(message.contains("/remotty-sessions <thread_id>"));
+    }
+
+    #[test]
+    fn find_selected_thread_accepts_prefix_match() {
+        let threads = vec![CodexThreadSummary {
+            thread_id: "thread-abcdef".to_owned(),
+            title: None,
+            cwd: None,
+            model: None,
+            updated_at: None,
+        }];
+
+        let selected =
+            find_selected_thread(&threads, "thread-abc").expect("prefix should select the thread");
+
+        assert_eq!(selected.thread_id, "thread-abcdef");
+    }
+
+    #[test]
+    fn format_thread_not_found_message_points_to_fresh_list() {
+        let message = format_thread_not_found_message("thread-old");
+
+        assert!(message.contains("thread-old"));
+        assert!(message.contains("/remotty-sessions"));
     }
 
     fn saved_attachment(

@@ -12,6 +12,8 @@ use crate::codex::{CodexOutcome, CodexRequest};
 use crate::config::{CodexConfig, WorkspaceConfig};
 use crate::store::{ApprovalRequestKind, ApprovalRequestRecord};
 
+const MIN_CODEX_APP_SERVER_VERSION: &str = "0.118.0";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexApprovalRequest {
     pub request_id: String,
@@ -22,6 +24,15 @@ pub struct CodexApprovalRequest {
     pub request_kind: ApprovalRequestKind,
     pub summary_text: String,
     pub raw_payload_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexThreadSummary {
+    pub thread_id: String,
+    pub title: Option<String>,
+    pub cwd: Option<String>,
+    pub model: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 pub struct AppServerClient {
@@ -129,6 +140,20 @@ impl AppServerClient {
             .await
     }
 
+    pub async fn list_threads(
+        &mut self,
+        limit: usize,
+        filter: Option<&str>,
+    ) -> Result<Vec<CodexThreadSummary>> {
+        self.ensure_initialized().await?;
+        let mut params = json!({ "limit": limit });
+        if let Some(filter) = filter.map(str::trim).filter(|filter| !filter.is_empty()) {
+            params["filter"] = Value::String(filter.to_owned());
+        }
+        let response = self.call("thread/list", params).await?;
+        parse_thread_list_response(&response)
+    }
+
     async fn start_turn_on_thread(
         &mut self,
         config: &CodexConfig,
@@ -159,7 +184,8 @@ impl AppServerClient {
         if self.initialized {
             return Ok(());
         }
-        self.call("initialize", initialize_params()).await?;
+        let response = self.call("initialize", initialize_params()).await?;
+        assert_supported_app_server_version(&response)?;
         self.send_json(&json!({ "method": "initialized" })).await?;
         self.initialized = true;
         Ok(())
@@ -423,6 +449,61 @@ fn initialize_params() -> Value {
     })
 }
 
+fn assert_supported_app_server_version(response: &Value) -> Result<()> {
+    let detected_version = response
+        .get("userAgent")
+        .and_then(Value::as_str)
+        .and_then(read_codex_version_from_user_agent);
+    let Some(detected_version) = detected_version else {
+        bail!(
+            "Codex app-server {MIN_CODEX_APP_SERVER_VERSION} or newer is required, but remotty could not determine the running Codex version"
+        );
+    };
+    if compare_versions(detected_version, MIN_CODEX_APP_SERVER_VERSION).is_lt() {
+        bail!(
+            "Codex app-server {MIN_CODEX_APP_SERVER_VERSION} or newer is required, but detected {detected_version}"
+        );
+    }
+    Ok(())
+}
+
+fn read_codex_version_from_user_agent(user_agent: &str) -> Option<&str> {
+    let (_, version) = user_agent
+        .split_whitespace()
+        .find_map(|product| product.split_once('/'))?;
+    let version = version
+        .split([' ', '('])
+        .next()
+        .unwrap_or(version)
+        .split(['+', '-'])
+        .next()
+        .unwrap_or(version);
+    if version.split('.').take(3).count() == 3
+        && version
+            .split('.')
+            .take(3)
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        Some(version)
+    } else {
+        None
+    }
+}
+
+fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
+    let left_parts = numeric_version_parts(left);
+    let right_parts = numeric_version_parts(right);
+    left_parts.cmp(&right_parts)
+}
+
+fn numeric_version_parts(version: &str) -> [u64; 3] {
+    let mut parts = [0_u64; 3];
+    for (index, part) in version.split('.').take(3).enumerate() {
+        parts[index] = part.parse::<u64>().unwrap_or(0);
+    }
+    parts
+}
+
 fn workspace_readable_roots(workspace: &WorkspaceConfig) -> Vec<String> {
     let mut roots = vec![workspace.path.display().to_string()];
     for path in &workspace.writable_roots {
@@ -480,6 +561,50 @@ fn thread_result_thread_id(result: &Value) -> Result<String> {
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
         .ok_or_else(|| anyhow!("thread result missing thread.id"))
+}
+
+fn parse_thread_list_response(response: &Value) -> Result<Vec<CodexThreadSummary>> {
+    let threads =
+        thread_list_items(response).ok_or_else(|| anyhow!("thread/list result missing threads"))?;
+    threads
+        .iter()
+        .map(parse_thread_summary)
+        .collect::<Result<Vec<_>>>()
+}
+
+fn thread_list_items(response: &Value) -> Option<&Vec<Value>> {
+    if let Some(items) = response.as_array() {
+        return Some(items);
+    }
+    for key in ["threads", "items", "data"] {
+        if let Some(items) = response.get(key).and_then(Value::as_array) {
+            return Some(items);
+        }
+    }
+    None
+}
+
+fn parse_thread_summary(thread: &Value) -> Result<CodexThreadSummary> {
+    let thread_id = thread_string(thread, &["threadId", "id"])
+        .ok_or_else(|| anyhow!("thread/list entry missing thread id"))?;
+    Ok(CodexThreadSummary {
+        thread_id,
+        title: thread_string(thread, &["title", "name", "summary"]),
+        cwd: thread_string(thread, &["cwd"]),
+        model: thread_string(thread, &["model"]),
+        updated_at: thread_string(thread, &["updatedAt", "lastUpdatedAt"]),
+    })
+}
+
+fn thread_string(thread: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        thread
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
 }
 
 fn response_id(message: &Value) -> Option<String> {
@@ -1003,5 +1128,102 @@ mod tests {
     fn initialize_params_enable_experimental_api() {
         let params = initialize_params();
         assert_eq!(params["capabilities"]["experimentalApi"], Value::Bool(true));
+    }
+
+    #[test]
+    fn read_codex_version_from_user_agent_accepts_codex_product_prefix() {
+        assert_eq!(
+            read_codex_version_from_user_agent("Codex/0.118.1 (windows)"),
+            Some("0.118.1")
+        );
+    }
+
+    #[test]
+    fn read_codex_version_from_user_agent_accepts_desktop_origin_prefix() {
+        assert_eq!(
+            read_codex_version_from_user_agent("Codex Desktop/0.118.1 (windows)"),
+            Some("0.118.1")
+        );
+    }
+
+    #[test]
+    fn assert_supported_app_server_version_rejects_old_versions() {
+        let error = assert_supported_app_server_version(&json!({
+            "userAgent": "Codex/0.117.9"
+        }))
+        .expect_err("old version should fail");
+
+        assert!(error.to_string().contains("0.118.0 or newer"));
+        assert!(error.to_string().contains("0.117.9"));
+    }
+
+    #[test]
+    fn assert_supported_app_server_version_accepts_minimum_version() {
+        assert_supported_app_server_version(&json!({
+            "userAgent": "Codex/0.118.0"
+        }))
+        .expect("minimum version should pass");
+    }
+
+    #[test]
+    fn parse_thread_list_response_accepts_threads_key() {
+        let threads = parse_thread_list_response(&json!({
+            "threads": [
+                {
+                    "threadId": "thread-1",
+                    "title": "Fix tests",
+                    "cwd": "C:/workspace",
+                    "model": "gpt-5.4",
+                    "updatedAt": "2026-04-22T00:00:00Z"
+                }
+            ]
+        }))
+        .expect("threads should parse");
+
+        assert_eq!(
+            threads,
+            vec![CodexThreadSummary {
+                thread_id: "thread-1".to_owned(),
+                title: Some("Fix tests".to_owned()),
+                cwd: Some("C:/workspace".to_owned()),
+                model: Some("gpt-5.4".to_owned()),
+                updated_at: Some("2026-04-22T00:00:00Z".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_thread_list_response_accepts_items_key_and_id_fallback() {
+        let threads = parse_thread_list_response(&json!({
+            "items": [
+                {
+                    "id": "thread-2",
+                    "summary": "Continue work",
+                    "lastUpdatedAt": "2026-04-22T01:00:00Z"
+                }
+            ]
+        }))
+        .expect("threads should parse");
+
+        assert_eq!(threads[0].thread_id, "thread-2");
+        assert_eq!(threads[0].title.as_deref(), Some("Continue work"));
+        assert_eq!(
+            threads[0].updated_at.as_deref(),
+            Some("2026-04-22T01:00:00Z")
+        );
+    }
+
+    #[test]
+    fn parse_thread_list_response_rejects_entries_without_id() {
+        let error = parse_thread_list_response(&json!({
+            "threads": [
+                {
+                    "title": "Missing id"
+                }
+            ]
+        }))
+        .expect_err("missing id should fail");
+
+        assert!(error.to_string().contains("thread id"));
     }
 }

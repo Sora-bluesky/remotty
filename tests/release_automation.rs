@@ -376,6 +376,243 @@ fn release_workflow_runs_public_audits_before_publishing() -> Result<()> {
 }
 
 #[test]
+fn ci_runs_release_coverage_audit() -> Result<()> {
+    let workflow =
+        fs::read_to_string(repo_root().join(".github").join("workflows").join("ci.yml"))?;
+
+    assert!(workflow.contains("scripts/audit-release-coverage.ps1"));
+
+    Ok(())
+}
+
+#[test]
+fn release_coverage_audit_rejects_missing_history_entry() -> Result<()> {
+    let temp = TempDir::new()?;
+    let history_path = temp.path().join("release-history.psd1");
+    let required_path = temp.path().join("release-required.psd1");
+
+    write_file(
+        &history_path,
+        r#"@{
+    Releases = @(
+        @{
+            Version = "0.1.24"
+            Commit = "1111111111111111111111111111111111111111"
+            Title = "Current"
+            Notes = @("Current release")
+        }
+    )
+}"#,
+    )?;
+    write_file(
+        &required_path,
+        r#"@{
+    RequiredReleases = @("0.2.0")
+}"#,
+    )?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(
+            repo_root()
+                .join("scripts")
+                .join("audit-release-coverage.ps1"),
+        )
+        .arg("-RepoRoot")
+        .arg(repo_root())
+        .arg("-HistoryPath")
+        .arg(&history_path)
+        .arg("-RequiredReleasePath")
+        .arg(&required_path)
+        .arg("-SkipRemoteTagCheck")
+        .output()
+        .context("failed to run release coverage audit")?;
+
+    assert!(
+        !output.status.success(),
+        "release coverage audit unexpectedly succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("required release v0.2.0"));
+    assert!(stderr.contains("release-history.psd1"));
+
+    Ok(())
+}
+
+#[test]
+fn release_coverage_audit_accepts_recorded_required_release() -> Result<()> {
+    let temp = TempDir::new()?;
+    let history_path = temp.path().join("release-history.psd1");
+    let required_path = temp.path().join("release-required.psd1");
+
+    write_file(
+        &history_path,
+        r#"@{
+    Releases = @(
+        @{
+            Version = "0.2.0"
+            Commit = "2222222222222222222222222222222222222222"
+            Title = "Session feasibility"
+            Notes = @("Documented app-server feasibility")
+        }
+    )
+}"#,
+    )?;
+    write_file(
+        &required_path,
+        r#"@{
+    RequiredReleases = @("0.2.0")
+}"#,
+    )?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(
+            repo_root()
+                .join("scripts")
+                .join("audit-release-coverage.ps1"),
+        )
+        .arg("-RepoRoot")
+        .arg(repo_root())
+        .arg("-HistoryPath")
+        .arg(&history_path)
+        .arg("-RequiredReleasePath")
+        .arg(&required_path)
+        .arg("-SkipRemoteTagCheck")
+        .output()
+        .context("failed to run release coverage audit")?;
+
+    assert!(
+        output.status.success(),
+        "release coverage audit failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("release coverage audit passed"));
+
+    Ok(())
+}
+
+#[test]
+fn release_coverage_audit_allows_current_version_before_remote_tag_exists() -> Result<()> {
+    let temp = TempDir::new()?;
+    let history_path = temp.path().join("release-history.psd1");
+    let required_path = temp.path().join("release-required.psd1");
+    let version_path = temp.path().join("VERSION");
+
+    write_file(
+        &history_path,
+        r#"@{
+    Releases = @(
+        @{
+            Version = "0.2.0"
+            Commit = "2222222222222222222222222222222222222222"
+            Title = "Session feasibility"
+            Notes = @("Documented app-server feasibility")
+        }
+    )
+}"#,
+    )?;
+    write_file(
+        &required_path,
+        r#"@{
+    RequiredReleases = @("0.2.0")
+}"#,
+    )?;
+    write_file(&version_path, "0.2.0")?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(
+            repo_root()
+                .join("scripts")
+                .join("audit-release-coverage.ps1"),
+        )
+        .arg("-RepoRoot")
+        .arg(repo_root())
+        .arg("-HistoryPath")
+        .arg(&history_path)
+        .arg("-RequiredReleasePath")
+        .arg(&required_path)
+        .arg("-VersionPath")
+        .arg(&version_path)
+        .arg("-Remote")
+        .arg("missing-remote-for-test")
+        .output()
+        .context("failed to run release coverage audit")?;
+
+    assert!(
+        output.status.success(),
+        "release coverage audit failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("release coverage audit passed"));
+
+    Ok(())
+}
+
+#[test]
+fn release_coverage_audit_checks_remote_tag_after_source_version_advances() -> Result<()> {
+    let temp = TempDir::new()?;
+    let history_path = temp.path().join("release-history.psd1");
+    let required_path = temp.path().join("release-required.psd1");
+    let version_path = temp.path().join("VERSION");
+
+    write_file(
+        &history_path,
+        r#"@{
+    Releases = @(
+        @{
+            Version = "0.2.0"
+            Commit = "2222222222222222222222222222222222222222"
+            Title = "Session feasibility"
+            Notes = @("Documented app-server feasibility")
+        }
+    )
+}"#,
+    )?;
+    write_file(
+        &required_path,
+        r#"@{
+    RequiredReleases = @("0.2.0")
+}"#,
+    )?;
+    write_file(&version_path, "0.2.1")?;
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(
+            repo_root()
+                .join("scripts")
+                .join("audit-release-coverage.ps1"),
+        )
+        .arg("-RepoRoot")
+        .arg(repo_root())
+        .arg("-HistoryPath")
+        .arg(&history_path)
+        .arg("-RequiredReleasePath")
+        .arg(&required_path)
+        .arg("-VersionPath")
+        .arg(&version_path)
+        .arg("-Remote")
+        .arg("missing-remote-for-test")
+        .output()
+        .context("failed to run release coverage audit")?;
+
+    assert!(
+        !output.status.success(),
+        "release coverage audit unexpectedly succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Failed to query remote tag v0.2.0"));
+
+    Ok(())
+}
+
+#[test]
 fn bump_version_runs_public_audits_before_release_workflow() -> Result<()> {
     let script = fs::read_to_string(repo_root().join("scripts").join("bump-version.ps1"))?;
     let planning_validation = script

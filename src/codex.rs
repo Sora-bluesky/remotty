@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::app_server::{AppServerClient, CodexApprovalRequest};
+use crate::app_server::{AppServerClient, CodexApprovalRequest, CodexThreadSummary};
 use crate::config::{CodexConfig, CodexTransport, WorkspaceConfig};
 use crate::store::ApprovalRequestRecord;
 
@@ -154,6 +154,19 @@ impl CodexRunner {
             .as_mut()
             .expect("app-server should exist")
             .resolve_approval(request, approved)
+            .await
+    }
+
+    pub async fn list_threads(
+        &self,
+        limit: usize,
+        filter: Option<&str>,
+    ) -> Result<Vec<CodexThreadSummary>> {
+        let mut client = self.ensure_app_server().await?;
+        client
+            .as_mut()
+            .expect("app-server should exist")
+            .list_threads(limit, filter)
             .await
     }
 

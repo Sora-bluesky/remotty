@@ -20,6 +20,7 @@ Available commands:
 - `/remotty-start`
 - `/remotty-status`
 - `/remotty-stop`
+- `/remotty-sessions`
 - `/remotty-fakechat-demo`
 - `/remotty-live-env-check`
 - `/remotty-smoke-approval-accept`

@@ -51,3 +51,6 @@ jobs:
 
       - name: Secret surface audit
         run: pwsh -NoProfile -File scripts/audit-secret-surface.ps1
+
+      - name: Release coverage audit
+        run: pwsh -NoProfile -File scripts/audit-release-coverage.ps1
