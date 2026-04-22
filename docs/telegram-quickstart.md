@@ -48,7 +48,32 @@ Run `/remotty-use-this-project` while the target project is open.
 `/remotty-configure` and `/remotty-start` do not write to the repository.
 For the clearest setup, keep using the same project while you run them.
 
-## 2. Install the Local Plugin
+## How Often Each Step Is Needed
+
+Do these once for the same Windows user:
+
+- Install `remotty`
+- Install the local plugin in Codex App
+- Prepare a Telegram bot, unless you already have one
+- Store the bot token
+- Pair your Telegram account
+
+Do these when you use a new project:
+
+- Open or enter the project
+- Register that project with `remotty`
+
+Do this for each Telegram chat:
+
+- Bind a Telegram chat to a Codex thread
+
+Check these when you use it:
+
+- Confirm the bridge is running
+- Confirm the Telegram chat points to the intended Codex thread
+- Send a message from Telegram
+
+## 2. Install the Local Plugin (Once)
 
 Codex App users can use the local plugin.
 
@@ -69,7 +94,7 @@ Click the add button, then confirm the install dialog.
 Codex CLI users can skip this step.
 Use the PowerShell commands shown below instead.
 
-## 3. Open or Enter Your Project
+## 3. Open or Enter Your Project (When You Use a New Project)
 
 Use the project you want to continue from Telegram.
 You do not need to use the same project every time.
@@ -82,7 +107,7 @@ If you use Codex CLI, enter the project folder in PowerShell:
 Set-Location C:\path\to\your\project
 ```
 
-## 4. Register This Project
+## 4. Register This Project (Once Per Project)
 
 Codex App users type this in the chat box.
 Run this one while the target project is open:
@@ -100,7 +125,12 @@ remotty config workspace upsert --config $configPath --path (Get-Location).Path
 This saves the project to the config under `%APPDATA%\remotty`.
 It does not write files into your project repository.
 
-## 5. Create a Telegram Bot
+## 5. Prepare a Telegram Bot (Once)
+
+This is a one-time setup.
+If you already have a dedicated `remotty` bot, use its token.
+
+Only create a new bot when you do not have one yet:
 
 1. Open `@BotFather` in Telegram.
 2. Send `/newbot`.
@@ -110,10 +140,12 @@ It does not write files into your project repository.
 
 Do not post the token in chat, screenshots, issues, or pull requests.
 
-## 6. Store the Bot Token
+## 6. Store the Bot Token (Once, Or When Replacing It)
 
 Codex App users type this in the chat box.
-This does not save the token in the open repository:
+This does not save the token in the open repository.
+After you store it once, the same Windows user can reuse it.
+Run this again only when you want to replace the token.
 
 ```text
 /remotty-configure
@@ -131,7 +163,7 @@ It does not print the token back.
 The storage is tied to your Windows user.
 It is reused even when you work in another project.
 
-## 7. Start the Bridge
+## 7. Start the Bridge (When You Use It)
 
 Codex App users type this in the chat box.
 Startup uses `%APPDATA%\remotty\bridge.toml`.
@@ -151,7 +183,7 @@ remotty --config $configPath
 Keep the bridge running while you use Telegram.
 If it stops, the bot cannot reply.
 
-## 8. Pair Telegram
+## 8. Pair Telegram (Once)
 
 Send any message to your bot in a private Telegram chat.
 
@@ -182,7 +214,7 @@ remotty telegram policy allowlist --config $configPath
 
 This prevents other Telegram users from controlling your local Codex setup.
 
-## 9. Select a Codex Thread
+## 9. Select a Codex Thread (Per Telegram Chat)
 
 Codex App users run:
 

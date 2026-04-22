@@ -47,7 +47,32 @@ Windows の保護領域へ保存します。
 `/remotty-configure` と `/remotty-start` は、リポジトリへ書き込みません。
 ただし、迷わないために同じプロジェクトで続けて実行してください。
 
-## 2. ローカルプラグインを入れる
+## 手順の分け方
+
+同じ Windows ユーザーで初回だけ行う手順:
+
+- `remotty` を入れる
+- Codex App へローカルプラグインを入れる
+- Telegram bot を用意する。すでにある場合は不要
+- bot token を保存する
+- Telegram アカウントをペアリングする
+
+新しいプロジェクトを使う時だけ行う手順:
+
+- 作業したいプロジェクトを開く
+- そのプロジェクトを `remotty` へ登録する
+
+Telegram チャットごとに行う手順:
+
+- Telegram チャットへ Codex スレッドを対応付ける
+
+使うたびに確認する手順:
+
+- ブリッジが起動しているか確認する
+- Telegram チャットが意図した Codex スレッドへ向いているか確認する
+- Telegram からメッセージを送る
+
+## 2. ローカルプラグインを入れる（初回だけ）
 
 Codex App では、ローカルプラグインを使えます。
 
@@ -68,7 +93,7 @@ Plugins 画面で次を行います。
 Codex CLI だけで使う場合は、この手順を飛ばせます。
 以降にある PowerShell のコマンドを使ってください。
 
-## 3. 作業したいプロジェクトへ入る
+## 3. 作業したいプロジェクトへ入る（新しいプロジェクトを使う時）
 
 Telegram から続けたいプロジェクトを使います。
 毎回同じプロジェクトを使う必要はありません。
@@ -81,7 +106,7 @@ Codex CLI を使う場合は、PowerShell でフォルダへ入ります。
 Set-Location C:\path\to\your\project
 ```
 
-## 4. このプロジェクトを登録する
+## 4. このプロジェクトを登録する（同じプロジェクトでは初回だけ）
 
 Codex App では、チャット欄へ次を入力します。
 このコマンドだけは、対象プロジェクトを開いた状態で実行します。
@@ -99,7 +124,12 @@ remotty config workspace upsert --config $configPath --path (Get-Location).Path
 この操作は、プロジェクトを `%APPDATA%\remotty` の設定へ保存します。
 プロジェクトのリポジトリには書き込みません。
 
-## 5. Telegram bot を作る
+## 5. Telegram bot を用意する（初回だけ）
+
+この手順は初回だけです。
+すでに `remotty` 用の bot がある場合は、その token を使います。
+
+新しく作る場合だけ、次を行います。
 
 1. Telegram で `@BotFather` を開きます。
 2. `/newbot` を送ります。
@@ -109,10 +139,12 @@ remotty config workspace upsert --config $configPath --path (Get-Location).Path
 
 token をチャット、スクリーンショット、issue、PR に貼らないでください。
 
-## 6. bot token を保存する
+## 6. bot token を保存する（初回だけ／token 変更時）
 
 Codex App では、チャット欄へ次を入力します。
 この操作は、今開いているリポジトリへ token を保存しません。
+一度保存すれば、同じ Windows ユーザーでは再利用できます。
+token を変える時だけ、もう一度実行します。
 
 ```text
 /remotty-configure
@@ -129,7 +161,7 @@ remotty telegram configure --config $configPath
 保存先は Windows ユーザーごとの保護領域です。
 プロジェクトを変えても、同じ Windows ユーザーなら同じ保存先を使います。
 
-## 7. ブリッジを起動する
+## 7. ブリッジを起動する（使うたび）
 
 Codex App では、チャット欄へ次を入力します。
 起動時は `%APPDATA%\remotty\bridge.toml` の設定を使います。
@@ -149,7 +181,7 @@ remotty --config $configPath
 Telegram から使う間は、ブリッジを起動したままにします。
 止まっていると bot は返信できません。
 
-## 8. Telegram をペアリングする
+## 8. Telegram をペアリングする（初回だけ）
 
 Telegram の private chat で、bot へ任意のメッセージを送ります。
 
@@ -180,7 +212,7 @@ remotty telegram policy allowlist --config $configPath
 
 これで、他の Telegram ユーザーが手元の Codex を操作できなくなります。
 
-## 9. Codex スレッドを選ぶ
+## 9. Codex スレッドを選ぶ（Telegram チャットごと）
 
 Codex App では、次を実行します。
 
