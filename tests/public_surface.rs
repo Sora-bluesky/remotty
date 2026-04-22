@@ -76,7 +76,7 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm pack --pack-destination release"));
     assert!(release_workflow.contains("cp release/remotty-*.tgz release/remotty.tgz"));
     assert!(release_workflow.contains("NPM_TOKEN: ${{ secrets.NPM_TOKEN }}"));
-    assert!(release_workflow.contains("npm publish release/remotty-*.tgz --access public"));
+    assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("releases/latest/download/remotty.tgz"));
     assert!(readme.contains("NPM_TOKEN"));
     assert!(readme.contains("npm publish .\\release\\remotty.tgz"));

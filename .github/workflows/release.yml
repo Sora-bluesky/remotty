@@ -101,4 +101,4 @@ jobs:
         if: ${{ env.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
-        run: npm publish release/remotty-*.tgz --access public
+        run: npm publish ./release/remotty-*.tgz --access public
