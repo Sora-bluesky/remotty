@@ -122,6 +122,9 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("Do this for each Telegram chat"));
     assert!(quickstart.contains("does not create files in the project root"));
     assert!(quickstart.contains("Security Q&A"));
+    assert!(quickstart.contains("Connection Q&A"));
+    assert!(quickstart.contains("Pairing Q&A"));
+    assert!(quickstart.contains("Thread Selection Q&A"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains("paired senders"));
     assert!(quickstart.contains("Regenerate it with `@BotFather`"));
@@ -141,6 +144,9 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("Telegram チャットごと"));
     assert!(quickstart_ja.contains("プロジェクトのルートに"));
     assert!(quickstart_ja.contains("安全性の Q&A"));
+    assert!(quickstart_ja.contains("接続の Q&A"));
+    assert!(quickstart_ja.contains("ペアリングの Q&A"));
+    assert!(quickstart_ja.contains("スレッド選択の Q&A"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains("許可済み送信者"));
     assert!(quickstart_ja.contains("@BotFather` で token を再発行"));
