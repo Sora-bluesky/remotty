@@ -205,5 +205,15 @@
                 "Reviewed shipped public docs and bridge.toml with Opus, then verified the package contents and secret scans before release."
             )
         }
+        @{
+            Version = "0.1.24"
+            Commit = "687dc5e8eaac798d1054a22488c383780fb41ce5"
+            Title = "Simpler npm install docs"
+            Notes = @(
+                "Removed the GitHub Release tarball fallback from user-facing setup docs so the npm registry install path stays primary."
+                "Split the npm install, package-folder, and config-copy commands into shorter labeled steps."
+                "Updated public-surface tests to keep the README focused on the short npm install command."
+            )
+        }
     )
 }
