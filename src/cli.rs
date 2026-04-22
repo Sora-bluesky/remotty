@@ -25,6 +25,7 @@ pub struct FakechatOptions {
     pub workspace: PathBuf,
     pub codex_binary: String,
     pub model: String,
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,12 +109,12 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand> 
 fn parse_demo_command(args: &[String]) -> Result<CliCommand> {
     let Some(action) = args.first() else {
         bail!(
-            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>]"
+            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>] [--thread-id <id>]"
         );
     };
     if action != "fakechat" {
         bail!(
-            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>]"
+            "usage: demo fakechat [--host <host>] [--port <port>] [--workspace <path>] [--codex-binary <path>] [--model <model>] [--thread-id <id>]"
         );
     }
 
@@ -123,6 +124,7 @@ fn parse_demo_command(args: &[String]) -> Result<CliCommand> {
         workspace: std::env::current_dir().context("failed to resolve current directory")?,
         codex_binary: "codex".to_owned(),
         model: "gpt-5.4".to_owned(),
+        thread_id: None,
     };
 
     let mut index = 1;
@@ -141,6 +143,7 @@ fn parse_demo_command(args: &[String]) -> Result<CliCommand> {
             "--workspace" => options.workspace = PathBuf::from(value),
             "--codex-binary" => options.codex_binary = value.clone(),
             "--model" => options.model = value.clone(),
+            "--thread-id" => options.thread_id = Some(value.clone()),
             other => bail!("unknown demo fakechat option: {other}"),
         }
         index += 2;
@@ -347,6 +350,7 @@ mod tests {
         assert_eq!(options.port, 8787);
         assert_eq!(options.codex_binary, "codex");
         assert_eq!(options.model, "gpt-5.4");
+        assert_eq!(options.thread_id, None);
     }
 
     #[test]
@@ -365,6 +369,8 @@ mod tests {
                 "codex-dev".to_owned(),
                 "--model".to_owned(),
                 "gpt-5.4-mini".to_owned(),
+                "--thread-id".to_owned(),
+                "thread-1".to_owned(),
             ])
             .expect("demo fakechat with options should parse"),
             CliCommand::Demo(DemoCommand::Fakechat(FakechatOptions {
@@ -373,6 +379,7 @@ mod tests {
                 workspace: PathBuf::from("C:/work"),
                 codex_binary: "codex-dev".to_owned(),
                 model: "gpt-5.4-mini".to_owned(),
+                thread_id: Some("thread-1".to_owned()),
             }))
         );
     }

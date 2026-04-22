@@ -4,6 +4,8 @@ Use `remotty demo fakechat` when you want to try the local chat loop before crea
 
 The demo starts a browser chat UI on `localhost`, sends each message to the local Codex CLI, and shows the reply in the same page. It does not use Telegram, bot tokens, webhooks, DPAPI, or a public server.
 
+When you pass `--thread-id`, the demo uses `codex app-server` instead of `codex exec`. This lets you verify saved-thread relay without Telegram credentials.
+
 ## What You Need
 
 - Windows 10 or Windows 11
@@ -50,6 +52,12 @@ Use a specific Codex binary or model:
 
 ```powershell
 remotty demo fakechat --codex-binary codex --model <your-codex-model>
+```
+
+Resume a saved Codex thread:
+
+```powershell
+remotty demo fakechat --thread-id <codex-thread-id>
 ```
 
 ## How This Differs From Telegram

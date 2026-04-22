@@ -138,6 +138,9 @@ What files are in the current workspace?
 
 `remotty` がメッセージを受け取り、手元の Codex CLI を動かし、同じ Telegram チャットへ返信します。
 
+`codex.transport = "app_server"` の場合、処理中に送ったテキストは同じターンへ追加入力として渡されます。
+添付ファイルは、ターン完了後の次の入力で送ってください。
+
 ## 8. 保存済み Codex スレッドを選ぶ
 
 保存済みスレッドを一覧します。

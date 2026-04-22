@@ -137,6 +137,8 @@ What files are in the current workspace?
 
 `remotty` receives the message, runs the Codex CLI locally, and sends the reply back to the same Telegram chat.
 
+With `codex.transport = "app_server"`, text sent during an active turn is relayed to that same turn. Attachments still need to wait for the next message after the turn finishes.
+
 ## 8. Bind a Saved Codex Thread
 
 To list saved Codex threads, run:

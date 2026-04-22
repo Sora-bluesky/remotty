@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::sync::mpsc;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -77,6 +78,7 @@ impl AppServerClient {
         config: &CodexConfig,
         workspace: &WorkspaceConfig,
         request: CodexRequest,
+        followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
         let thread = self
@@ -95,7 +97,7 @@ impl AppServerClient {
             )
             .await?;
         let thread_id = thread_result_thread_id(&thread)?;
-        self.start_turn_on_thread(config, workspace, &thread_id, request)
+        self.start_turn_on_thread(config, workspace, &thread_id, request, followups)
             .await
     }
 
@@ -105,6 +107,7 @@ impl AppServerClient {
         workspace: &WorkspaceConfig,
         thread_id: &str,
         request: CodexRequest,
+        followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
         self.call(
@@ -120,7 +123,7 @@ impl AppServerClient {
             }),
         )
         .await?;
-        self.start_turn_on_thread(config, workspace, thread_id, request)
+        self.start_turn_on_thread(config, workspace, thread_id, request, followups)
             .await
     }
 
@@ -136,7 +139,7 @@ impl AppServerClient {
             "result": response,
         }))
         .await?;
-        self.read_until_pause_or_completion(&request.thread_id, &request.turn_id)
+        self.read_until_pause_or_completion(&request.thread_id, &request.turn_id, None)
             .await
     }
 
@@ -160,6 +163,7 @@ impl AppServerClient {
         workspace: &WorkspaceConfig,
         thread_id: &str,
         request: CodexRequest,
+        followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         let turn = self
             .call(
@@ -176,7 +180,7 @@ impl AppServerClient {
             )
             .await?;
         let turn_id = turn_result_turn_id(&turn)?;
-        self.read_until_pause_or_completion(thread_id, &turn_id)
+        self.read_until_pause_or_completion(thread_id, &turn_id, followups)
             .await
     }
 
@@ -221,13 +225,28 @@ impl AppServerClient {
         &mut self,
         thread_id: &str,
         turn_id: &str,
+        mut followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         let mut delta_message = String::new();
         let mut approval_requests = Vec::new();
         let mut approval_resolved_count = 0_i64;
 
         loop {
-            let message = self.read_message().await?;
+            let message = if let Some(receiver) = followups.as_mut() {
+                tokio::select! {
+                    maybe_request = receiver.recv() => {
+                        if let Some(request) = maybe_request {
+                            self.steer_turn(thread_id, turn_id, request).await?;
+                        } else {
+                            followups = None;
+                        }
+                        continue;
+                    }
+                    message = self.read_message() => message?,
+                }
+            } else {
+                self.read_message().await?
+            };
             let Some(method) = message.get("method").and_then(Value::as_str) else {
                 self.backlog.push_back(message);
                 continue;
@@ -331,6 +350,19 @@ impl AppServerClient {
             }
         }
         Ok(String::new())
+    }
+
+    async fn steer_turn(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        request: CodexRequest,
+    ) -> Result<()> {
+        self.send_json(&json!({
+            "method": "turn/steer",
+            "params": turn_steer_params(thread_id, turn_id, request),
+        }))
+        .await
     }
 
     async fn read_message(&mut self) -> Result<Value> {
@@ -543,6 +575,14 @@ fn request_to_user_inputs(request: CodexRequest) -> Vec<Value> {
         }));
     }
     input
+}
+
+fn turn_steer_params(thread_id: &str, turn_id: &str, request: CodexRequest) -> Value {
+    json!({
+        "threadId": thread_id,
+        "expectedTurnId": turn_id,
+        "input": request_to_user_inputs(request),
+    })
 }
 
 fn turn_result_turn_id(result: &Value) -> Result<String> {
@@ -1225,5 +1265,18 @@ mod tests {
         .expect_err("missing id should fail");
 
         assert!(error.to_string().contains("thread id"));
+    }
+
+    #[test]
+    fn turn_steer_params_include_expected_turn_id_and_input() {
+        let params = turn_steer_params("thread-1", "turn-1", CodexRequest::new("follow up"));
+
+        assert_eq!(params["threadId"], Value::String("thread-1".to_owned()));
+        assert_eq!(params["expectedTurnId"], Value::String("turn-1".to_owned()));
+        assert_eq!(params["input"][0]["type"], Value::String("text".to_owned()));
+        assert_eq!(
+            params["input"][0]["text"],
+            Value::String("follow up".to_owned())
+        );
     }
 }

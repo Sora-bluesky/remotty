@@ -1,5 +1,12 @@
+use std::collections::HashMap;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
+
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -10,8 +17,8 @@ use crate::config::{
     CodexTransport, Config, LaneMode, checks::CheckRunSummary, checks::run_profile,
 };
 use crate::store::{
-    ApprovalRequestStatus, ApprovalRequestTransport, LaneRecord, LaneState, NewCodexThreadBinding,
-    NewRun, Store,
+    ApprovalRequestStatus, ApprovalRequestTransport, CodexThreadBinding, LaneRecord, LaneState,
+    NewCodexThreadBinding, NewRun, Store,
 };
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
@@ -24,6 +31,71 @@ const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
 const MAX_TELEGRAM_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_INFINITE_AUTO_TURNS: usize = 16;
 const AUTO_CONTINUE_STOP_MARKER: &str = "CHANNEL_WAITING";
+
+#[derive(Clone, Default)]
+struct ActiveTurnRegistry {
+    inner: Arc<Mutex<HashMap<String, ActiveTurnSender>>>,
+    next_id: Arc<AtomicU64>,
+}
+
+#[derive(Clone)]
+struct ActiveTurnSender {
+    id: u64,
+    sender: mpsc::UnboundedSender<CodexRequest>,
+}
+
+struct ActiveTurnGuard {
+    lane_id: String,
+    id: u64,
+    registry: ActiveTurnRegistry,
+}
+
+impl ActiveTurnRegistry {
+    fn register(&self, lane_id: &str) -> (ActiveTurnGuard, mpsc::UnboundedReceiver<CodexRequest>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner.lock().expect("active turn registry").insert(
+            lane_id.to_owned(),
+            ActiveTurnSender {
+                id,
+                sender: sender.clone(),
+            },
+        );
+        (
+            ActiveTurnGuard {
+                lane_id: lane_id.to_owned(),
+                id,
+                registry: self.clone(),
+            },
+            receiver,
+        )
+    }
+
+    fn send_followup(&self, lane_id: &str, request: CodexRequest) -> bool {
+        let sender = self
+            .inner
+            .lock()
+            .expect("active turn registry")
+            .get(lane_id)
+            .map(|entry| entry.sender.clone());
+        sender
+            .map(|sender| sender.send(request).is_ok())
+            .unwrap_or(false)
+    }
+}
+
+impl Drop for ActiveTurnGuard {
+    fn drop(&mut self) {
+        let mut senders = self.registry.inner.lock().expect("active turn registry");
+        if senders
+            .get(&self.lane_id)
+            .map(|entry| entry.id == self.id)
+            .unwrap_or(false)
+        {
+            senders.remove(&self.lane_id);
+        }
+    }
+}
 
 #[async_trait]
 trait TelegramApi {
@@ -151,6 +223,7 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
     let store = Store::open(&config.storage.db_path)?;
     seed_admin_senders(&store, &config.telegram.admin_sender_ids)?;
     let codex = CodexRunner::new(config.codex.clone());
+    let active_turns = ActiveTurnRegistry::default();
     fail_resolving_approval_notifications(&store, &telegram).await;
     invalidate_pending_approval_notifications_for_restart(&store, &telegram).await;
 
@@ -208,14 +281,29 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
             };
 
             let chat_id = update.chat_id;
-            if let Err(error) =
-                handle_message(&config, &store, &telegram, &codex, sender_id, update).await
-            {
-                warn!("failed to handle chat {chat_id}: {error:#}");
-                let _ = telegram
-                    .send_message(chat_id, &format_runtime_failure_message())
-                    .await;
-            }
+            let task_config = config.clone();
+            let task_store = store.clone();
+            let task_telegram = telegram.clone();
+            let task_codex = codex.clone();
+            let task_active_turns = active_turns.clone();
+            tokio::spawn(async move {
+                if let Err(error) = handle_message(
+                    &task_config,
+                    &task_store,
+                    &task_telegram,
+                    &task_codex,
+                    &task_active_turns,
+                    sender_id,
+                    update,
+                )
+                .await
+                {
+                    warn!("failed to handle chat {chat_id}: {error:#}");
+                    let _ = task_telegram
+                        .send_message(chat_id, &format_runtime_failure_message())
+                        .await;
+                }
+            });
         }
         sleep(Duration::from_millis(250)).await;
     }
@@ -227,6 +315,7 @@ async fn handle_message(
     store: &Store,
     telegram: &impl TelegramApi,
     codex: &CodexRunner,
+    active_turns: &ActiveTurnRegistry,
     sender_id: i64,
     update: IncomingMessage,
 ) -> Result<()> {
@@ -330,7 +419,53 @@ async fn handle_message(
         return Ok(());
     }
 
-    let workspace = resolve_workspace(config, existing_lane.as_ref())?;
+    if config.codex.transport == CodexTransport::AppServer {
+        if let Some(lane) = existing_lane.as_ref() {
+            if lane.state == LaneState::Running {
+                store.insert_message(
+                    &lane.lane_id,
+                    None,
+                    "inbound",
+                    "telegram_steer",
+                    Some(update.telegram_message_id),
+                    Some(&update.text),
+                    Some(&update.payload_json),
+                )?;
+                let reply = if !update.attachments.is_empty() {
+                    "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
+                        .to_owned()
+                } else if active_turns
+                    .send_followup(&lane.lane_id, CodexRequest::new(update.text.clone()))
+                {
+                    "実行中のターンへ追加入力を送りました。".to_owned()
+                } else {
+                    "現在の処理が続いています。完了後にもう一度送ってください。".to_owned()
+                };
+                let sent = telegram.send_message(update.chat_id, &reply).await?;
+                store.insert_message(
+                    &lane.lane_id,
+                    None,
+                    "outbound",
+                    "telegram_steer_status",
+                    Some(sent.message_id),
+                    Some(&reply),
+                    None,
+                )?;
+                return Ok(());
+            }
+        }
+    }
+
+    let saved_thread_binding = if config.codex.transport == CodexTransport::AppServer {
+        store.find_codex_thread_binding(update.chat_id, &update.thread_key)?
+    } else {
+        None
+    };
+    let workspace = resolve_workspace_for_message(
+        config,
+        existing_lane.as_ref(),
+        saved_thread_binding.as_ref(),
+    )?;
     let lane = store.get_or_create_lane(
         update.chat_id,
         &update.thread_key,
@@ -338,6 +473,8 @@ async fn handle_message(
         workspace.default_mode,
         configured_extra_turn_budget(workspace.default_mode, None, config.policy.max_turns_limit),
     )?;
+    let selected_session_id =
+        selected_codex_session_id(&lane, saved_thread_binding.as_ref()).map(ToOwned::to_owned);
 
     store.insert_message(
         &lane.lane_id,
@@ -352,18 +489,18 @@ async fn handle_message(
     store.update_lane_state(
         &lane.lane_id,
         LaneState::Running,
-        lane.codex_session_id.as_deref(),
+        selected_session_id.as_deref(),
     )?;
     let run = store.insert_run(NewRun {
         lane_id: lane.lane_id.clone(),
-        run_kind: if lane.codex_session_id.is_some() {
+        run_kind: if selected_session_id.is_some() {
             "resume".to_owned()
         } else {
             "start".to_owned()
         },
     })?;
 
-    let progress_text = format_processing_message(lane.codex_session_id.is_some());
+    let progress_text = format_processing_message(selected_session_id.is_some());
     let progress_message = telegram
         .send_message(update.chat_id, &progress_text)
         .await?;
@@ -395,10 +532,32 @@ async fn handle_message(
         lane.mode,
         &workspace.continue_prompt,
     );
-    let initial_outcome = if let Some(session_id) = lane.codex_session_id.as_deref() {
-        codex.resume(workspace, session_id, request).await?
+    let active_turn = if config.codex.transport == CodexTransport::AppServer {
+        let (guard, followups) = active_turns.register(&lane.lane_id);
+        Some((guard, followups))
     } else {
-        codex.start(workspace, request).await?
+        None
+    };
+    let initial_outcome = if let Some(session_id) = selected_session_id.as_deref() {
+        if let Some((guard, followups)) = active_turn {
+            let outcome = codex
+                .resume_with_followups(workspace, session_id, request, Some(followups))
+                .await?;
+            drop(guard);
+            outcome
+        } else {
+            codex.resume(workspace, session_id, request).await?
+        }
+    } else {
+        if let Some((guard, followups)) = active_turn {
+            let outcome = codex
+                .start_with_followups(workspace, request, Some(followups))
+                .await?;
+            drop(guard);
+            outcome
+        } else {
+            codex.start(workspace, request).await?
+        }
     };
     let (outcome, unresolved_checks, auto_turns_completed) =
         continue_lane_after_completion(config, workspace, codex, &lane, initial_outcome).await?;
@@ -1670,6 +1829,29 @@ fn resolve_workspace<'a>(
         .ok_or_else(|| anyhow!("workspace `{workspace_id}` が設定に見つかりません。"))
 }
 
+fn resolve_workspace_for_message<'a>(
+    config: &'a Config,
+    lane: Option<&LaneRecord>,
+    binding: Option<&CodexThreadBinding>,
+) -> Result<&'a crate::config::WorkspaceConfig> {
+    let workspace_id = lane
+        .map(|lane| lane.workspace_id.as_str())
+        .or_else(|| binding.map(|binding| binding.workspace_id.as_str()))
+        .unwrap_or(config.default_workspace().id.as_str());
+    config
+        .workspace(workspace_id)
+        .ok_or_else(|| anyhow!("workspace `{workspace_id}` が設定に見つかりません。"))
+}
+
+fn selected_codex_session_id<'a>(
+    lane: &'a LaneRecord,
+    binding: Option<&'a CodexThreadBinding>,
+) -> Option<&'a str> {
+    lane.codex_session_id
+        .as_deref()
+        .or_else(|| binding.map(|binding| binding.codex_thread_id.as_str()))
+}
+
 fn build_user_request(
     text: &str,
     attachments: &[SavedTelegramAttachment],
@@ -2652,6 +2834,140 @@ mod tests {
         assert!(message.contains("/remotty-sessions"));
     }
 
+    #[test]
+    fn selected_codex_session_id_prefers_live_lane_session() {
+        let lane = LaneRecord {
+            lane_id: "lane-1".to_owned(),
+            chat_id: 10,
+            thread_key: "dm".to_owned(),
+            workspace_id: "main".to_owned(),
+            mode: LaneMode::AwaitReply,
+            state: LaneState::WaitingReply,
+            codex_session_id: Some("live-thread".to_owned()),
+            extra_turn_budget: 0,
+            waiting_since_ms: None,
+        };
+        let binding = crate::store::CodexThreadBinding {
+            chat_id: 10,
+            thread_key: "dm".to_owned(),
+            codex_thread_id: "saved-thread".to_owned(),
+            workspace_id: "main".to_owned(),
+            title: None,
+            cwd: None,
+            model: None,
+            codex_updated_at: None,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        };
+
+        assert_eq!(
+            selected_codex_session_id(&lane, Some(&binding)),
+            Some("live-thread")
+        );
+    }
+
+    #[test]
+    fn selected_codex_session_id_uses_saved_thread_binding() {
+        let lane = LaneRecord {
+            lane_id: "lane-1".to_owned(),
+            chat_id: 10,
+            thread_key: "dm".to_owned(),
+            workspace_id: "main".to_owned(),
+            mode: LaneMode::AwaitReply,
+            state: LaneState::WaitingReply,
+            codex_session_id: None,
+            extra_turn_budget: 0,
+            waiting_since_ms: None,
+        };
+        let binding = crate::store::CodexThreadBinding {
+            chat_id: 10,
+            thread_key: "dm".to_owned(),
+            codex_thread_id: "saved-thread".to_owned(),
+            workspace_id: "main".to_owned(),
+            title: None,
+            cwd: None,
+            model: None,
+            codex_updated_at: None,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        };
+
+        assert_eq!(
+            selected_codex_session_id(&lane, Some(&binding)),
+            Some("saved-thread")
+        );
+    }
+
+    #[test]
+    fn resolve_workspace_for_message_uses_binding_when_lane_is_missing() {
+        let config = test_config();
+        let binding = crate::store::CodexThreadBinding {
+            chat_id: 10,
+            thread_key: "dm".to_owned(),
+            codex_thread_id: "saved-thread".to_owned(),
+            workspace_id: "docs".to_owned(),
+            title: None,
+            cwd: None,
+            model: None,
+            codex_updated_at: None,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        };
+
+        let workspace = resolve_workspace_for_message(&config, None, Some(&binding))
+            .expect("workspace should resolve");
+
+        assert_eq!(workspace.id, "docs");
+    }
+
+    #[tokio::test]
+    async fn running_app_server_lane_steers_followup_to_active_turn() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let mut config = test_config();
+        config.codex.transport = CodexTransport::AppServer;
+        let codex = CodexRunner::new(config.codex.clone());
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(10, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-1"))
+            .expect("lane should update");
+        let active_turns = ActiveTurnRegistry::default();
+        let (_guard, mut receiver) = active_turns.register(&lane.lane_id);
+
+        handle_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            &active_turns,
+            77,
+            IncomingMessage {
+                update_id: 1,
+                chat_id: 10,
+                chat_type: "private".to_owned(),
+                sender_id: Some(77),
+                text: "use the shorter path".to_owned(),
+                attachments: Vec::new(),
+                telegram_message_id: 501,
+                thread_key: "dm".to_owned(),
+                callback_query_id: None,
+                control_command_override: None,
+                payload_json: "{}".to_owned(),
+            },
+        )
+        .await
+        .expect("follow-up should steer");
+
+        let followup = receiver.try_recv().expect("follow-up should be queued");
+        assert_eq!(followup.prompt, "use the shorter path");
+        let sent_messages = telegram.sent_messages();
+        assert_eq!(sent_messages.len(), 1);
+        assert!(sent_messages[0].text.contains("追加入力を送りました"));
+    }
+
     fn saved_attachment(
         kind: TelegramAttachmentKind,
         local_path: &str,
@@ -2787,6 +3103,7 @@ mod tests {
             &store,
             &telegram,
             &codex,
+            &ActiveTurnRegistry::default(),
             77,
             IncomingMessage {
                 update_id: 1,

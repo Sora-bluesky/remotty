@@ -237,5 +237,17 @@
                 "Marked v0.2.1 as a required release before later source versions can pass CI."
             )
         }
+        @{
+            Version = "0.2.2"
+            Commit = "18276cf551f757e20198a90ef7692f58cbfa61fb"
+            Title = "Saved Codex thread message relay"
+            Notes = @(
+                "Resumed the selected saved Codex thread before each Telegram turn."
+                "Relayed Telegram text through app-server turn/start on the resumed thread."
+                "Returned the resumed thread reply to the same Telegram chat."
+                "Added turn/steer follow-up input while an app-server turn is active."
+                "Extended fakechat with saved-thread relay checks that do not need Telegram credentials."
+            )
+        }
     )
 }

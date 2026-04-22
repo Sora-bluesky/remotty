@@ -23,6 +23,7 @@ use crate::config::{CodexConfig, CodexTransport, LaneMode, WorkspaceConfig};
 struct AppState {
     runner: CodexRunner,
     workspace: WorkspaceConfig,
+    thread_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,13 +104,18 @@ async fn bind_listener(options: &FakechatOptions) -> Result<TcpListener> {
 
 fn app(options: FakechatOptions) -> Result<Router> {
     let workspace_path = normalize_workspace_path(options.workspace)?;
+    let use_app_server = options.thread_id.is_some();
     let state = AppState {
         runner: CodexRunner::new(CodexConfig {
             binary: options.codex_binary,
             model: options.model,
             sandbox: "read-only".to_owned(),
             approval: "never".to_owned(),
-            transport: CodexTransport::Exec,
+            transport: if use_app_server {
+                CodexTransport::AppServer
+            } else {
+                CodexTransport::Exec
+            },
             profile: None,
         }),
         workspace: WorkspaceConfig {
@@ -120,6 +126,7 @@ fn app(options: FakechatOptions) -> Result<Router> {
             continue_prompt: "Continue only if needed.".to_owned(),
             checks_profile: "default".to_owned(),
         },
+        thread_id: options.thread_id,
     };
 
     Ok(Router::new()
@@ -155,10 +162,15 @@ async fn message(
         return Err(anyhow::anyhow!("message must not be empty").into());
     }
 
-    let outcome = state
-        .runner
-        .start(&state.workspace, CodexRequest::new(prompt))
-        .await?;
+    let request = CodexRequest::new(prompt);
+    let outcome = if let Some(thread_id) = state.thread_id.as_deref() {
+        state
+            .runner
+            .resume(&state.workspace, thread_id, request)
+            .await?
+    } else {
+        state.runner.start(&state.workspace, request).await?
+    };
     let reply = if outcome.last_message.trim().is_empty() && outcome.approval_pending {
         "Codex is waiting for local approval in the terminal.".to_owned()
     } else {
@@ -330,6 +342,7 @@ mod tests {
             workspace: temp.path().to_path_buf(),
             codex_binary: fake_codex.display().to_string(),
             model: "gpt-5.4-mini".to_owned(),
+            thread_id: None,
         })
         .await?;
 
@@ -341,6 +354,36 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = response.json::<serde_json::Value>().await?;
         assert_eq!(body["reply"], "fakechat reply");
+        assert_eq!(body["exit_code"], 0);
+        assert_eq!(body["approval_pending"], false);
+
+        handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fakechat_resumes_selected_thread_through_fake_app_server() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let fake_codex = write_fake_app_server_codex(temp.path(), "saved thread reply")?;
+        let (address, handle) = spawn_fakechat(FakechatOptions {
+            host: "127.0.0.1".to_owned(),
+            port: 0,
+            workspace: temp.path().to_path_buf(),
+            codex_binary: fake_codex.display().to_string(),
+            model: "gpt-5.4-mini".to_owned(),
+            thread_id: Some("thread-saved".to_owned()),
+        })
+        .await?;
+
+        let response = reqwest::Client::new()
+            .post(format!("http://{address}/api/message"))
+            .json(&json!({ "message": "hello" }))
+            .send()
+            .await?;
+        let status = response.status();
+        let body = response.json::<serde_json::Value>().await?;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["reply"], "saved thread reply");
         assert_eq!(body["exit_code"], 0);
         assert_eq!(body["approval_pending"], false);
 
@@ -377,6 +420,70 @@ echo {{^\"type^\":^\"item.completed^\",^\"item^\":{{^\"type^\":^\"agent_message^
                     "#!/bin/sh\n\
 printf '%s\n' '{{\"type\":\"thread.started\",\"thread_id\":\"thread-fakechat\"}}'\n\
 printf '%s\n' '{{\"type\":\"item.completed\",\"item\":{{\"type\":\"agent_message\",\"text\":\"{}\"}}}}'\n",
+                    escaped_reply
+                ),
+            )?;
+            let mut permissions = fs::metadata(&path)?.permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&path, permissions)?;
+            Ok(path)
+        }
+    }
+
+    fn write_fake_app_server_codex(root: &Path, reply_text: &str) -> Result<PathBuf> {
+        #[cfg(windows)]
+        {
+            let path = root.join("fake-app-server-codex.cmd");
+            let script_path = root.join("fake-app-server-codex.ps1");
+            fs::write(
+                &path,
+                "@echo off\r\npwsh -NoProfile -ExecutionPolicy Bypass -File \"%~dp0fake-app-server-codex.ps1\"\r\n",
+            )?;
+            let escaped_reply = reply_text.replace('\'', "''");
+            let script = r#"
+while ($null -ne ($line = [Console]::In.ReadLine())) {
+    if ($line.Contains('"id":"client-1"')) {
+        Write-Output '{"id":"client-1","result":{"userAgent":"Codex/0.118.0"}}'
+        continue
+    }
+    if ($line.Contains('"id":"client-2"')) {
+        Write-Output '{"id":"client-2","result":{}}'
+        continue
+    }
+    if ($line.Contains('"id":"client-3"')) {
+        Write-Output '{"id":"client-3","result":{"turn":{"id":"turn-fakechat"}}}'
+        Write-Output '{"method":"turn/completed","params":{"turn":{"id":"turn-fakechat","status":"completed"}}}'
+        continue
+    }
+    if ($line.Contains('"id":"client-4"')) {
+        Write-Output '{"id":"client-4","result":{"thread":{"turns":[{"id":"turn-fakechat","items":[{"type":"agentMessage","text":"__REPLY__"}]}]}}}'
+        continue
+    }
+}
+"#
+            .replace("__REPLY__", &escaped_reply);
+            fs::write(&script_path, script)?;
+            Ok(path)
+        }
+
+        #[cfg(not(windows))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = root.join("fake-app-server-codex");
+            let escaped_reply = reply_text.replace('\'', "'\\''");
+            fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\n\
+while IFS= read -r line; do\n\
+  case \"$line\" in\n\
+    *client-1*) printf '%s\\n' '{{\"id\":\"client-1\",\"result\":{{\"userAgent\":\"Codex/0.118.0\"}}}}' ;;\n\
+    *client-2*) printf '%s\\n' '{{\"id\":\"client-2\",\"result\":{{}}}}' ;;\n\
+    *client-3*) printf '%s\\n' '{{\"id\":\"client-3\",\"result\":{{\"turn\":{{\"id\":\"turn-fakechat\"}}}}}}'; printf '%s\\n' '{{\"method\":\"turn/completed\",\"params\":{{\"turn\":{{\"id\":\"turn-fakechat\",\"status\":\"completed\"}}}}}}' ;;\n\
+    *client-4*) printf '%s\\n' '{{\"id\":\"client-4\",\"result\":{{\"thread\":{{\"turns\":[{{\"id\":\"turn-fakechat\",\"items\":[{{\"type\":\"agentMessage\",\"text\":\"{}\"}}]}}]}}}}}}' ;;\n\
+  esac\n\
+done\n",
                     escaped_reply
                 ),
             )?;
