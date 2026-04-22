@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
 use crate::app_server::{AppServerClient, CodexApprovalRequest, CodexThreadSummary};
@@ -99,6 +99,15 @@ impl CodexRunner {
         workspace: &WorkspaceConfig,
         request: impl Into<CodexRequest>,
     ) -> Result<CodexOutcome> {
+        self.start_with_followups(workspace, request, None).await
+    }
+
+    pub async fn start_with_followups(
+        &self,
+        workspace: &WorkspaceConfig,
+        request: impl Into<CodexRequest>,
+        followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
+    ) -> Result<CodexOutcome> {
         match self.config.transport {
             CodexTransport::Exec => {
                 let mut args = self.base_args(workspace);
@@ -110,7 +119,7 @@ impl CodexRunner {
                 client
                     .as_mut()
                     .expect("app-server should exist")
-                    .start_turn(&self.config, workspace, request.into())
+                    .start_turn(&self.config, workspace, request.into(), followups)
                     .await
             }
         }
@@ -121,6 +130,17 @@ impl CodexRunner {
         workspace: &WorkspaceConfig,
         session_id: &str,
         request: impl Into<CodexRequest>,
+    ) -> Result<CodexOutcome> {
+        self.resume_with_followups(workspace, session_id, request, None)
+            .await
+    }
+
+    pub async fn resume_with_followups(
+        &self,
+        workspace: &WorkspaceConfig,
+        session_id: &str,
+        request: impl Into<CodexRequest>,
+        followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         match self.config.transport {
             CodexTransport::Exec => {
@@ -138,7 +158,13 @@ impl CodexRunner {
                 client
                     .as_mut()
                     .expect("app-server should exist")
-                    .resume_turn(&self.config, workspace, session_id, request.into())
+                    .resume_turn(
+                        &self.config,
+                        workspace,
+                        session_id,
+                        request.into(),
+                        followups,
+                    )
                     .await
             }
         }

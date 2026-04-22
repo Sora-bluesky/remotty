@@ -11,6 +11,9 @@ Steps:
 3. Run `remotty demo fakechat --workspace <path>`.
 4. Tell the user to open the printed `http://127.0.0.1:<port>` URL.
 
+If the user wants to verify a saved Codex thread, add `--thread-id <id>`.
+That path uses `codex app-server` and resumes the selected thread.
+
 If port `8787` is busy, retry with:
 
 ```powershell
