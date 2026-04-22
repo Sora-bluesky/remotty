@@ -110,22 +110,20 @@ function Assert-FileContains {
     }
 }
 
-Assert-FileContains -Path 'README.md' -Needle 'saved Codex thread'
-Assert-FileContains -Path 'README.md' -Needle 'codex app-server'
-Assert-FileContains -Path 'README.md' -Needle 'codex.transport = "app_server"'
-Assert-FileContains -Path 'README.md' -Needle 'Migration From v0.1'
-Assert-FileContains -Path 'README.ja.md' -Needle '保存済み Codex スレッド'
-Assert-FileContains -Path 'README.ja.md' -Needle 'codex app-server'
-Assert-FileContains -Path 'README.ja.md' -Needle 'codex.transport = "app_server"'
-Assert-FileContains -Path 'README.ja.md' -Needle 'v0.1 から v0.2 への移行'
+Assert-FileContains -Path 'README.md' -Needle 'Codex thread'
+Assert-FileContains -Path 'README.md' -Needle 'Telegram Quickstart'
+Assert-FileContains -Path 'README.md' -Needle 'Advanced CLI Mode'
+Assert-FileContains -Path 'README.ja.md' -Needle 'Codex スレッド'
+Assert-FileContains -Path 'README.ja.md' -Needle 'Telegram クイックスタート'
+Assert-FileContains -Path 'README.ja.md' -Needle '高度な CLI モード'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessions <thread_id>'
-Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'does not type into the open Codex App window'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'You do not need to choose a transport'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-sessions <thread_id>'
-Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '開いている Codex App 画面へキー入力するものではありません'
-Assert-FileContains -Path 'docs/migration-v0.1-to-v0.2.md' -Needle 'separate-run bridge'
-Assert-FileContains -Path 'docs/migration-v0.1-to-v0.2.md' -Needle 'saved-thread relay'
-Assert-FileContains -Path 'docs/migration-v0.1-to-v0.2.ja.md' -Needle '別実行のブリッジ'
-Assert-FileContains -Path 'docs/migration-v0.1-to-v0.2.ja.md' -Needle '保存済みスレッド'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'ほかの項目を変更する必要はありません'
+Assert-FileContains -Path 'docs/exec-transport.md' -Needle 'transport = "exec"'
+Assert-FileContains -Path 'docs/exec-transport.ja.md' -Needle 'transport = "exec"'
+Assert-FileContains -Path 'docs/upgrading.md' -Needle 'transport = "app_server"'
+Assert-FileContains -Path 'docs/upgrading.ja.md' -Needle 'transport = "app_server"'
 
 if ($failures.Count -gt 0) {
     [Console]::Error.WriteLine("public surface audit failed:`n- " + ($failures -join "`n- "))

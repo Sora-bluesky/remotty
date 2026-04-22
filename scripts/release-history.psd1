@@ -271,5 +271,16 @@
                 "Added public-surface checks that keep the saved-thread setup and migration docs present before release."
             )
         }
+        @{
+            Version = "0.2.5"
+            Commit = "c622a700b508f3cdb19f4f362c6dbfd934e4e60b"
+            Title = "Final-state public docs"
+            Notes = @(
+                "Reframed the README files around the current user flow instead of release history."
+                "Moved the advanced exec transport and upgrade notes out of the main setup path."
+                "Simplified the Telegram quickstart so normal users do not choose between transports."
+                "Changed the starter config to use the Codex thread relay transport by default."
+            )
+        }
     )
 }

@@ -1,14 +1,14 @@
 # Telegram Quickstart
 
-This guide connects `remotty` to Telegram and binds a Telegram chat to a saved
-Codex thread.
+This guide sets up `remotty` so Telegram can send messages to a Codex thread
+on your Windows PC.
 
-The v0.2 path uses `codex app-server`. It resumes a saved thread and sends your
-Telegram message to that thread.
-It does not type into the open Codex App window.
+## How It Works
 
-For the older separate-run path, see
-[Migration From v0.1](migration-v0.1-to-v0.2.md).
+1. You run `remotty` on your Windows PC.
+2. You send a message to your Telegram bot.
+3. `remotty` sends that message to the Codex thread you selected.
+4. Codex replies, and `remotty` sends the reply back to Telegram.
 
 ## What You Need
 
@@ -19,6 +19,8 @@ For the older separate-run path, see
 - A dedicated Telegram bot from `@BotFather`
 
 ## 1. Install `remotty`
+
+Run this in PowerShell:
 
 ```powershell
 npm install -g remotty
@@ -31,7 +33,7 @@ $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
 ```
 
-Copy the starter config to your user config folder:
+Copy the starter config:
 
 ```powershell
 $configDir = Join-Path $env:APPDATA "remotty"
@@ -40,7 +42,23 @@ Copy-Item -Force .\bridge.toml (Join-Path $configDir "bridge.toml")
 $configPath = Join-Path $configDir "bridge.toml"
 ```
 
-## 2. Create a Telegram Bot
+## 2. Set Your Project Folder
+
+Open `%APPDATA%\remotty\bridge.toml`.
+
+Change these two lines to the project you want Codex to work in:
+
+```toml
+path = "C:/Users/you/Documents/project"
+writable_roots = ["C:/Users/you/Documents/project"]
+```
+
+Use forward slashes in Windows paths.
+
+You do not need to choose a transport for the normal setup.
+The included config is already set up for Codex thread relay.
+
+## 3. Create a Telegram Bot
 
 1. Open `@BotFather` in Telegram.
 2. Send `/newbot`.
@@ -50,109 +68,75 @@ $configPath = Join-Path $configDir "bridge.toml"
 
 Do not post the token in chat, screenshots, issues, or pull requests.
 
-## 3. Install the Local Plugin
+## 4. Install the Local Plugin
 
 Open the `remotty` package folder in the Codex App.
-In the Plugins view, add `.agents/plugins/marketplace.json`.
-Then install the plugin named `remotty`.
 
-Confirm that `remotty` appears in the Plugins view.
+In the Plugins view:
 
-## 4. Store the Bot Token
+1. Add `.agents/plugins/marketplace.json`.
+2. Install the plugin named `remotty`.
+3. Confirm that `remotty` appears in the Plugins view.
 
-Run:
+## 5. Store the Bot Token
+
+Run this in the Codex App:
 
 ```text
 /remotty-configure
 ```
 
-Paste the token when prompted. The command stores it in Windows protected
-storage and does not print it back.
-
-## 5. Configure the Saved-Thread Transport
-
-Edit `%APPDATA%\remotty\bridge.toml`.
-
-Set the transport:
-
-```toml
-[codex]
-transport = "app_server"
-```
-
-Set the project folder:
-
-```toml
-[[workspaces]]
-id = "main"
-path = "C:/Users/you/Documents/project"
-writable_roots = ["C:/Users/you/Documents/project"]
-```
-
-Use forward slashes in Windows paths.
-
-The older `exec` transport starts a separate `codex exec` run. Use
-`app_server` when you want to continue a saved Codex thread.
+Paste the token when prompted.
+The command stores it in Windows protected storage.
+It does not print the token back.
 
 ## 6. Start the Bridge
 
-Run:
+Run this in the Codex App:
 
 ```text
 /remotty-start
 ```
 
-Keep the bridge running while you use Telegram. If it stops, the bot cannot
-reply.
-
-Check status:
-
-```text
-/remotty-status
-```
-
-Stop it:
-
-```text
-/remotty-stop
-```
+Keep the bridge running while you use Telegram.
+If it stops, the bot cannot reply.
 
 ## 7. Pair Telegram
 
 Send any message to your bot in a private Telegram chat.
 
-The bot replies with a `remotty pairing code`. In Codex, run:
+The bot replies with a `remotty pairing code`.
+Run this in the Codex App:
 
 ```text
 /remotty-access-pair <code>
 ```
 
-Then lock access to the allowlist:
+Then lock access to your allowlist:
 
 ```text
 /remotty-policy-allowlist
 ```
 
-Only allowlisted senders can send work and approval decisions.
+This prevents other Telegram users from controlling your local Codex setup.
 
-## 8. Select a Saved Codex Thread
+## 8. Select a Codex Thread
 
-List saved threads:
+Run this in the Codex App:
 
 ```text
 /remotty-sessions
 ```
 
-Pick the thread that you want Telegram to continue.
-
-Bind this Telegram chat to it:
+Choose the thread you want Telegram to continue.
+Then bind this Telegram chat to it:
 
 ```text
 /remotty-sessions <thread_id>
 ```
 
-The binding is stored under the configured `remotty` state directory.
-It is not written into the target project repository.
+This binding is stored under `%APPDATA%\remotty`.
+It is not written into your project repository.
 
 ## 9. Send a Test Message
 
@@ -162,17 +146,15 @@ In Telegram, send:
 Summarize the current thread and suggest the next step.
 ```
 
-`remotty` resumes the selected saved thread, sends the text, and returns the
-reply to Telegram.
+`remotty` sends the text to the selected Codex thread.
+The reply appears in Telegram.
 
-If the project Git tree has uncommitted changes, `remotty` warns before
-relaying work into that repository.
-
-## 10. Approval Prompts
+## Approval Prompts
 
 When Codex asks for approval, `remotty` posts the prompt to Telegram.
 
-You can press `Approve` or `Deny`. You can also use:
+You can press `Approve` or `Deny`.
+You can also type:
 
 ```text
 /approve <request_id>
@@ -181,37 +163,18 @@ You can press `Approve` or `Deny`. You can also use:
 
 The decision is returned to the same Codex turn.
 
-## Optional: Manual Smoke Checks
-
-Manual smoke checks use a real Telegram bot and a local temporary workspace.
-
-Check the environment first:
-
-```text
-/remotty-live-env-check
-```
-
-Then run:
-
-```text
-/remotty-smoke-approval-accept
-/remotty-smoke-approval-decline
-```
-
-Follow the terminal guidance and press the Telegram approval button when asked.
-
 ## Troubleshooting
 
 ### The Bot Does Not Reply
 
 - Confirm `/remotty-start` is still running.
-- Run `/remotty-status`.
-- Run `/remotty-live-env-check`.
+- Run `/remotty-status` in the Codex App.
+- Run `/remotty-live-env-check` in the Codex App.
 - If the webhook status is `webhook-configured`, switch the bot back to polling.
 
-### No Saved Threads Appear
+### No Codex Threads Appear
 
-- Confirm Codex CLI supports `app-server`.
+- Update Codex CLI, then try again.
 - Start at least one Codex App or Codex CLI thread.
 - Run `/remotty-sessions` again.
 
@@ -237,7 +200,11 @@ Stop the process that reads the same bot:
 Stop-Process -Id <PID>
 ```
 
-## Remote Connections
+## Related
+
+- [Fakechat Demo](fakechat-demo.md)
+- [Advanced CLI Mode](exec-transport.md)
+- [Upgrade Notes](upgrading.md)
 
 Codex Remote connections connect the Codex App to an SSH development machine.
 Use them when the code and shell live on a remote host.

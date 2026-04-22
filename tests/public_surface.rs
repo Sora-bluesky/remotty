@@ -62,6 +62,8 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
             .join("release.yml"),
     )?;
     let readme = std::fs::read_to_string(repo_root().join("README.md"))?;
+    let quickstart =
+        std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.md"))?;
     let development_doc = std::fs::read_to_string(repo_root().join("docs").join("development.md"))?;
 
     assert!(package.contains(r#""postinstall": "node npm/install.js""#));
@@ -79,11 +81,10 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("NPM_TOKEN: ${{ secrets.NPM_TOKEN }}"));
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
-    assert!(readme.contains("npm install -g remotty"));
-    assert!(readme.contains("saved Codex thread"));
-    assert!(readme.contains("codex app-server"));
-    assert!(readme.contains("codex.transport = \"app_server\""));
-    assert!(readme.contains("Migration From v0.1"));
+    assert!(quickstart.contains("npm install -g remotty"));
+    assert!(readme.contains("Codex thread"));
+    assert!(readme.contains("Telegram Quickstart"));
+    assert!(readme.contains("Advanced CLI Mode"));
     assert!(!readme.contains("releases/latest/download/remotty.tgz"));
     assert!(development_doc.contains("NPM_TOKEN"));
     assert!(development_doc.contains("npm publish .\\release\\remotty.tgz"));
@@ -92,31 +93,29 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
 }
 
 #[test]
-fn public_docs_explain_saved_thread_setup_and_migration() -> Result<()> {
+fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     let readme_ja = std::fs::read_to_string(repo_root().join("README.ja.md"))?;
     let quickstart =
         std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.md"))?;
     let quickstart_ja =
         std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.ja.md"))?;
-    let migration =
-        std::fs::read_to_string(repo_root().join("docs").join("migration-v0.1-to-v0.2.md"))?;
-    let migration_ja = std::fs::read_to_string(
-        repo_root()
-            .join("docs")
-            .join("migration-v0.1-to-v0.2.ja.md"),
-    )?;
+    let exec_doc = std::fs::read_to_string(repo_root().join("docs").join("exec-transport.md"))?;
+    let exec_doc_ja =
+        std::fs::read_to_string(repo_root().join("docs").join("exec-transport.ja.md"))?;
+    let upgrading = std::fs::read_to_string(repo_root().join("docs").join("upgrading.md"))?;
+    let upgrading_ja = std::fs::read_to_string(repo_root().join("docs").join("upgrading.ja.md"))?;
 
-    assert!(readme_ja.contains("保存済み Codex スレッド"));
-    assert!(readme_ja.contains("codex app-server"));
-    assert!(readme_ja.contains("codex.transport = \"app_server\""));
+    assert!(readme_ja.contains("Codex スレッド"));
+    assert!(readme_ja.contains("Telegram クイックスタート"));
+    assert!(readme_ja.contains("高度な CLI モード"));
     assert!(quickstart.contains("/remotty-sessions <thread_id>"));
-    assert!(quickstart.contains("does not type into the open Codex App window"));
+    assert!(quickstart.contains("You do not need to choose a transport"));
     assert!(quickstart_ja.contains("/remotty-sessions <thread_id>"));
-    assert!(quickstart_ja.contains("開いている Codex App 画面へキー入力するものではありません"));
-    assert!(migration.contains("separate-run bridge"));
-    assert!(migration.contains("saved-thread relay"));
-    assert!(migration_ja.contains("別実行のブリッジ"));
-    assert!(migration_ja.contains("保存済みスレッド"));
+    assert!(quickstart_ja.contains("ほかの項目を変更する必要はありません"));
+    assert!(exec_doc.contains("transport = \"exec\""));
+    assert!(exec_doc_ja.contains("transport = \"exec\""));
+    assert!(upgrading.contains("transport = \"app_server\""));
+    assert!(upgrading_ja.contains("transport = \"app_server\""));
 
     Ok(())
 }

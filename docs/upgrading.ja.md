@@ -1,0 +1,45 @@
+# 更新時の注意
+
+すでに古い `remotty` 設定を持っている場合に見てください。
+
+新規に入れる場合は、[Telegram クイックスタート](telegram-quickstart.ja.md) を使ってください。
+
+## 推奨設定
+
+`%APPDATA%\remotty\bridge.toml` を開きます。
+
+通常の Telegram 連携では、次を使います。
+
+```toml
+[codex]
+transport = "app_server"
+```
+
+これで、Telegram から選択済みの Codex スレッドを続けられます。
+スレッドは次で選びます。
+
+```text
+/remotty-sessions
+/remotty-sessions <thread_id>
+```
+
+## 設定が `exec` の場合
+
+`exec` も使えます。
+これは Telegram の依頼ごとに別の Codex CLI 実行を始めます。
+
+その動きが必要なら、次のままにします。
+
+```toml
+[codex]
+transport = "exec"
+```
+
+詳しくは [高度な CLI モード](exec-transport.ja.md) を見てください。
+
+## 実行時ファイル
+
+`remotty` は自分の状態を `%APPDATA%\remotty` に保存します。
+
+プロジェクトのリポジトリへ、`remotty` の実行時ファイルは置きません。
+ただし、依頼内容によって Codex 自体はプロジェクトを編集します。
