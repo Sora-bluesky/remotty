@@ -36,16 +36,18 @@ The PowerShell examples below reuse `$configPath`.
 
 ## Where To Type Commands And Where Data Is Stored
 
-Type Codex App `/remotty-...` commands in the Codex App chat box.
-Do not type those commands in PowerShell.
+In Codex App, type `@` in the chat box.
+Select `remotty` from the suggestions.
+Then describe the setup task in plain language.
+Do not type those plugin requests in PowerShell.
 This guide explicitly says when a command goes to Telegram.
 
 The bot token is not saved in your project repository.
 It is saved in Windows protected storage.
 `remotty` config and runtime state are saved under `%APPDATA%\remotty`.
 
-Run `/remotty-use-this-project` while the target project is open.
-`/remotty-configure` and `/remotty-start` do not write to the repository.
+Register the project while the target project is open.
+Token storage and bridge startup do not write to the repository.
 For the clearest setup, keep using the same project while you run them.
 `remotty` does not create files in the project root.
 In normal use, it does not add anything to commit.
@@ -111,11 +113,11 @@ Set-Location C:\path\to\your\project
 
 ## 4. Register This Project (Once Per Project)
 
-Codex App users type this in the chat box.
-Run this one while the target project is open:
+In Codex App, select `@remotty`.
+Ask this while the target project is open:
 
 ```text
-/remotty-use-this-project
+Register this project with remotty
 ```
 
 Codex CLI users run this from the project folder:
@@ -146,14 +148,18 @@ Do not post the token in chat, screenshots, issues, or pull requests.
 
 ## 6. Store the Bot Token (Once, Or When Replacing It)
 
-Codex App users type this in the chat box.
+In Codex App, select `@remotty`.
 This does not save the token in the open repository.
 After you store it once, the same Windows user can reuse it.
 Run this again only when you want to replace the token.
 
 ```text
-/remotty-configure
+Store the Telegram bot token
 ```
+
+`remotty` opens a PowerShell window for hidden token input.
+Enter the token only in that PowerShell window.
+Do not paste the token into Codex App chat.
 
 Codex CLI users run:
 
@@ -169,12 +175,12 @@ It is reused even when you work in another project.
 
 ## 7. Start the Bridge (When You Use It)
 
-Codex App users type this in the chat box.
+In Codex App, select `@remotty`.
 Startup uses `%APPDATA%\remotty\bridge.toml`.
 It does not put runtime files in the open repository:
 
 ```text
-/remotty-start
+Start the bridge
 ```
 
 Codex CLI users run:
@@ -192,10 +198,10 @@ If it stops, the bot cannot reply.
 Send any message to your bot in a private Telegram chat.
 
 The bot replies with a `remotty pairing code`.
-Codex App users run:
+In Codex App, select `@remotty` and ask:
 
 ```text
-/remotty-access-pair <code>
+Pair with code <code>
 ```
 
 Codex CLI users run:
@@ -204,10 +210,11 @@ Codex CLI users run:
 remotty telegram access-pair <code> --config $configPath
 ```
 
-Then lock access to your allowlist:
+Then check the allowlist.
+In Codex App, select `@remotty` and ask:
 
 ```text
-/remotty-policy-allowlist
+Lock down Telegram access to the allowlist
 ```
 
 Codex CLI users run:
@@ -220,10 +227,10 @@ This prevents other Telegram users from controlling your local Codex setup.
 
 ## 9. Select a Codex Thread (Per Telegram Chat)
 
-Codex App users run:
+In Codex App, select `@remotty` and ask:
 
 ```text
-/remotty-sessions
+List Codex threads
 ```
 
 Codex CLI users run:
@@ -271,7 +278,7 @@ The decision is returned to the same Codex turn.
 
 ### Security Q&A
 
-> Q. Does `/remotty-use-this-project` create files in my project?
+> Q. Does project registration create files in my project?
 >
 > A. No. It saves configuration to `%APPDATA%\remotty\bridge.toml`. It does not create `.remotty` or other files in the project root. If you want to verify this, run `git status` after the command.
 
@@ -289,7 +296,7 @@ The decision is returned to the same Codex turn.
 
 > Q. Can anyone control my Codex session?
 >
-> A. No. Only paired senders are allowed. After pairing, run `/remotty-policy-allowlist`.
+> A. No. Only paired senders are allowed. After pairing, ask `@remotty` to lock down access to the allowlist.
 > This keeps access limited to configured senders.
 
 > Q. Is approving from Telegram safe?
@@ -302,13 +309,13 @@ The decision is returned to the same Codex turn.
 
 > Q. What if the token may have leaked?
 >
-> A. Regenerate it with `@BotFather`. Then save the new token with `/remotty-configure`.
+> A. Regenerate it with `@BotFather`. Then ask `@remotty` to save the new token.
 
 ### Connection Q&A
 
 > Q. The bot does not reply.
 >
-> A. First confirm `/remotty-start` is still running. In Codex App, run `/remotty-status` and `/remotty-live-env-check`. In PowerShell, run `remotty service status` and `remotty telegram live-env-check --config $configPath`. If the webhook status is `webhook-configured`, switch the bot back to polling.
+> A. First confirm the bridge is still running. In Codex App, ask `@remotty` to check status. In PowerShell, run `remotty service status` and `remotty telegram live-env-check --config $configPath`. If the webhook status is `webhook-configured`, switch the bot back to polling.
 
 > Q. I get a polling conflict.
 >
@@ -328,13 +335,13 @@ Stop-Process -Id <PID>
 
 > Q. The pairing code does not work.
 >
-> A. Send the message in a private chat with the bot. Use the newest code. Run `/remotty-access-pair <code>` before the code expires.
+> A. Send the message in a private chat with the bot. Use the newest code. Ask `@remotty` to pair before the code expires.
 
 ### Thread Selection Q&A
 
 > Q. No Codex threads appear.
 >
-> A. Update Codex CLI, then try again. Start at least one Codex App or Codex CLI thread. Run `/remotty-sessions` again.
+> A. Update Codex CLI, then try again. Start at least one Codex App or Codex CLI thread. Ask `@remotty` to list threads again.
 
 ## Related
 

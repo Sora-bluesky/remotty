@@ -83,21 +83,17 @@ impl AppServerClient {
         followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
-        let thread = self
-            .call(
-                "thread/start",
-                json!({
-                    "model": config.model,
-                    "cwd": workspace.path.display().to_string(),
-                    "approvalPolicy": config.approval,
-                    "approvalsReviewer": "user",
-                    "sandbox": config.sandbox,
-                    "experimentalRawEvents": false,
-                    "persistExtendedHistory": true,
-                    "serviceName": "remotty",
-                }),
-            )
-            .await?;
+        let mut params = json!({
+            "cwd": workspace.path.display().to_string(),
+            "approvalPolicy": config.approval,
+            "approvalsReviewer": "user",
+            "sandbox": config.sandbox,
+            "experimentalRawEvents": false,
+            "persistExtendedHistory": true,
+            "serviceName": "remotty",
+        });
+        add_model_param(&mut params, config);
+        let thread = self.call("thread/start", params).await?;
         let thread_id = thread_result_thread_id(&thread)?;
         self.start_turn_on_thread(config, workspace, &thread_id, request, followups)
             .await
@@ -112,19 +108,16 @@ impl AppServerClient {
         followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
-        self.call(
-            "thread/resume",
-            json!({
+        let mut params = json!({
                 "threadId": thread_id,
-                "model": config.model,
                 "cwd": workspace.path.display().to_string(),
                 "approvalPolicy": config.approval,
                 "approvalsReviewer": "user",
                 "sandbox": config.sandbox,
                 "persistExtendedHistory": true,
-            }),
-        )
-        .await?;
+        });
+        add_model_param(&mut params, config);
+        self.call("thread/resume", params).await?;
         self.start_turn_on_thread(config, workspace, thread_id, request, followups)
             .await
     }
@@ -170,20 +163,16 @@ impl AppServerClient {
         request: CodexRequest,
         followups: Option<mpsc::UnboundedReceiver<CodexRequest>>,
     ) -> Result<CodexOutcome> {
-        let turn = self
-            .call(
-                "turn/start",
-                json!({
-                    "threadId": thread_id,
-                    "input": request_to_user_inputs(request),
-                    "cwd": workspace.path.display().to_string(),
-                    "approvalPolicy": config.approval,
-                    "approvalsReviewer": "user",
-                    "sandboxPolicy": sandbox_policy_for_workspace(config, workspace),
-                    "model": config.model,
-                }),
-            )
-            .await?;
+        let mut params = json!({
+            "threadId": thread_id,
+            "input": request_to_user_inputs(request),
+            "cwd": workspace.path.display().to_string(),
+            "approvalPolicy": config.approval,
+            "approvalsReviewer": "user",
+            "sandboxPolicy": sandbox_policy_for_workspace(config, workspace),
+        });
+        add_model_param(&mut params, config);
+        let turn = self.call("turn/start", params).await?;
         let turn_id = turn_result_turn_id(&turn)?;
         self.read_until_pause_or_completion(thread_id, &turn_id, followups)
             .await
@@ -600,6 +589,17 @@ fn app_server_spawn_args(config: &CodexConfig) -> Vec<String> {
     }
     args.push("app-server".to_owned());
     args
+}
+
+fn configured_model(config: &CodexConfig) -> Option<&str> {
+    let model = config.model.trim();
+    if model.is_empty() { None } else { Some(model) }
+}
+
+fn add_model_param(params: &mut Value, config: &CodexConfig) {
+    if let Some(model) = configured_model(config) {
+        params["model"] = Value::String(model.to_owned());
+    }
 }
 
 fn request_to_user_inputs(request: CodexRequest) -> Vec<Value> {
@@ -1179,6 +1179,42 @@ mod tests {
                 "app-server".to_owned(),
             ]
         );
+    }
+
+    #[test]
+    fn add_model_param_omits_blank_model() {
+        let mut params = json!({});
+        add_model_param(
+            &mut params,
+            &CodexConfig {
+                binary: "codex".to_owned(),
+                model: String::new(),
+                sandbox: "workspace-write".to_owned(),
+                approval: "on-request".to_owned(),
+                transport: CodexTransport::AppServer,
+                profile: None,
+            },
+        );
+
+        assert!(params.get("model").is_none());
+    }
+
+    #[test]
+    fn add_model_param_includes_configured_model() {
+        let mut params = json!({});
+        add_model_param(
+            &mut params,
+            &CodexConfig {
+                binary: "codex".to_owned(),
+                model: "gpt-5.4".to_owned(),
+                sandbox: "workspace-write".to_owned(),
+                approval: "on-request".to_owned(),
+                transport: CodexTransport::AppServer,
+                profile: None,
+            },
+        );
+
+        assert_eq!(params["model"], Value::String("gpt-5.4".to_owned()));
     }
 
     #[test]

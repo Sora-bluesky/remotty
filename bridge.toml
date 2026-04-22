@@ -11,7 +11,6 @@ admin_sender_ids = []
 
 [codex]
 binary = "codex"
-model = "gpt-5.4"
 sandbox = "workspace-write"
 approval = "on-request"
 transport = "app_server"

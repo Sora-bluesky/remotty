@@ -113,14 +113,18 @@ function Assert-FileContains {
 Assert-FileContains -Path 'README.md' -Needle 'Codex thread'
 Assert-FileContains -Path 'README.md' -Needle 'Telegram Quickstart'
 Assert-FileContains -Path 'README.md' -Needle 'Advanced CLI Mode'
+Assert-FileContains -Path 'README.md' -Needle 'Select `remotty`'
+Assert-FileContains -Path 'README.md' -Needle 'Do not paste the token into Codex App chat.'
 Assert-FileContains -Path 'README.ja.md' -Needle 'Codex スレッド'
 Assert-FileContains -Path 'README.ja.md' -Needle 'Telegram クイックスタート'
 Assert-FileContains -Path 'README.ja.md' -Needle '高度な CLI モード'
+Assert-FileContains -Path 'README.ja.md' -Needle '候補から `remotty`'
+Assert-FileContains -Path 'README.ja.md' -Needle 'Codex App のチャット欄には貼らないでください'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessions <thread_id>'
-Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-use-this-project'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Register this project with remotty'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex CLI users run'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'remotty config workspace upsert'
-Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex App chat box'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Select `remotty` from the suggestions'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Windows protected storage'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'remotty local plugins'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'one-time setup'
@@ -134,12 +138,13 @@ Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Pairing Q&A'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Thread Selection Q&A'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Windows protected storage'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'paired senders'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Do not paste the token into Codex App chat.'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Regenerate it with `@BotFather`'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-sessions <thread_id>'
-Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-use-this-project'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'このプロジェクトを remotty に登録して'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex CLI では'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'remotty config workspace upsert'
-Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex App のチャット欄'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '候補から `remotty` を選びます'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Windows の保護領域'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'remotty local plugins'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '初回だけ'
@@ -153,11 +158,32 @@ Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'ペアリン
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'スレッド選択の Q&A'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Windows の保護領域'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '許可済み送信者'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex App のチャット欄には貼らないでください'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '@BotFather` で token を再発行'
 Assert-FileContains -Path 'docs/exec-transport.md' -Needle 'transport = "exec"'
 Assert-FileContains -Path 'docs/exec-transport.ja.md' -Needle 'transport = "exec"'
 Assert-FileContains -Path 'docs/upgrading.md' -Needle 'transport = "app_server"'
 Assert-FileContains -Path 'docs/upgrading.ja.md' -Needle 'transport = "app_server"'
+Assert-FileContains -Path 'plugins/remotty/.codex-plugin/plugin.json' -Needle '"skills": "./skills/"'
+Assert-FileContains -Path 'plugins/remotty/skills/remotty-configure/SKILL.md' -Needle 'PowerShell window'
+Assert-FileContains -Path 'plugins/remotty/skills/remotty-start/SKILL.md' -Needle 'remotty service start'
+Assert-FileContains -Path 'plugins/remotty/skills/remotty-status/SKILL.md' -Needle 'remotty telegram policy allowlist'
+
+if (Test-Path -LiteralPath 'plugins/remotty/README.md') {
+    $pluginReadme = Get-Content -LiteralPath 'plugins/remotty/README.md' -Raw
+    foreach ($forbidden in @('fakechat', '/remotty-fakechat-demo', '/remotty-smoke')) {
+        if ($pluginReadme.Contains($forbidden)) {
+            $failures.Add("plugins/remotty/README.md must not mention removed command wording: $forbidden") | Out-Null
+        }
+    }
+}
+
+if (Test-Path -LiteralPath 'bridge.toml') {
+    $bridgeToml = Get-Content -LiteralPath 'bridge.toml' -Raw
+    if ($bridgeToml -match '(?m)^\s*model\s*=') {
+        $failures.Add('bridge.toml must not pin a Codex model by default.') | Out-Null
+    }
+}
 
 if (Test-Path -LiteralPath 'docs/telegram-quickstart.md') {
     $quickstart = Get-Content -LiteralPath 'docs/telegram-quickstart.md' -Raw

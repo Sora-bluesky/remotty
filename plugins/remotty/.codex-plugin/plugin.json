@@ -16,10 +16,11 @@
     "bridge",
     "plugin"
   ],
+  "skills": "./skills/",
   "interface": {
     "displayName": "remotty",
-    "shortDescription": "Set up and run the Windows Codex Telegram bridge from plugin commands",
-    "longDescription": "Use plugin commands to register the current project, configure the Telegram bot token, pair an allowed sender, start or inspect the bridge, and run live checks without exposing secrets in terminal output.",
+    "shortDescription": "Set up and run the Windows Codex Telegram bridge from plugin skills",
+    "longDescription": "Use plugin skills to register the current project, configure the Telegram bot token, pair an allowed sender, start or inspect the bridge, and run live checks without exposing secrets in terminal output.",
     "developerName": "Sora-bluesky",
     "category": "Coding",
     "capabilities": [
@@ -31,7 +32,7 @@
     "privacyPolicyURL": "https://github.com/Sora-bluesky/remotty",
     "termsOfServiceURL": "https://github.com/Sora-bluesky/remotty",
     "defaultPrompt": [
-      "Register this project for remotty, configure Telegram, pair my account, and start the Windows bridge"
+      "Register this project for remotty, configure Telegram, and guide me through pairing before starting the Windows bridge"
     ],
     "brandColor": "#2F6FEB",
     "screenshots": []

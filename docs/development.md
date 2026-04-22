@@ -64,7 +64,7 @@ Configure `remotty` first:
 
 The smoke command can read the bot token from the configured secret and infer a single paired private sender.
 If `LIVE_WORKSPACE` is not set, it uses `target/live-smoke-workspace` and creates the `.remotty-live-smoke-ok` marker there.
-`/remotty-live-env-check` also checks whether the bot is in polling mode.
+The live environment check also confirms whether the bot is in polling mode.
 It reports `polling-ready` when no webhook is configured and `webhook-configured` when the bot must be switched back before a smoke run.
 
 Only set `LIVE_*` variables when you need to override the defaults.

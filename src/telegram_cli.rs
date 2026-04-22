@@ -167,7 +167,7 @@ pub async fn send_access_pair_code(
         .send_message(
             chat_id,
             &format!(
-                "remotty pairing code: `{pair_code}`\nRun `/remotty-access-pair {pair_code}` in Codex within {PAIR_CODE_TTL_SECONDS} seconds."
+                "remotty pairing code: `{pair_code}`\nIn Codex App, use `@remotty` and ask it to pair this code within {PAIR_CODE_TTL_SECONDS} seconds.\nIn PowerShell, run `remotty telegram access-pair {pair_code} --config <bridge.toml>`."
             ),
         )
         .await?;

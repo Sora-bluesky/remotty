@@ -49,6 +49,7 @@ pub struct TelegramConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CodexConfig {
     pub binary: String,
+    #[serde(default)]
     pub model: String,
     pub sandbox: String,
     pub approval: String,

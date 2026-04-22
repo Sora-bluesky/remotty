@@ -35,16 +35,18 @@ $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 
 ## 入力場所と保存先
 
-Codex App 用の `/remotty-...` コマンドは、Codex App のチャット欄へ入力します。
-PowerShell へ入力するコマンドではありません。
+Codex App では、チャット欄で `@` を入力します。
+候補から `remotty` を選びます。
+その後、日本語で作業を依頼します。
+PowerShell へ入力する手順ではありません。
 Telegram へ入力する場合は、この手順内で明示します。
 
 bot token は、プロジェクトのリポジトリへ保存しません。
 Windows の保護領域へ保存します。
 `remotty` の設定と状態は `%APPDATA%\remotty` 配下へ保存します。
 
-`/remotty-use-this-project` は、対象プロジェクトを開いた状態で実行します。
-`/remotty-configure` と `/remotty-start` は、リポジトリへ書き込みません。
+プロジェクト登録は、対象プロジェクトを開いた状態で依頼します。
+token 保存とブリッジ起動は、リポジトリへ書き込みません。
 ただし、迷わないために同じプロジェクトで続けて実行してください。
 プロジェクトのルートに `remotty` 用のファイルは作りません。
 そのため、通常はコミット対象物も増えません。
@@ -110,11 +112,11 @@ Set-Location C:\path\to\your\project
 
 ## 4. このプロジェクトを登録する（同じプロジェクトでは初回だけ）
 
-Codex App では、チャット欄へ次を入力します。
-このコマンドだけは、対象プロジェクトを開いた状態で実行します。
+Codex App では、`@remotty` を選びます。
+対象プロジェクトを開いた状態で、次のように依頼します。
 
 ```text
-/remotty-use-this-project
+このプロジェクトを remotty に登録して
 ```
 
 Codex CLI では、プロジェクトフォルダで次を実行します。
@@ -145,14 +147,18 @@ token をチャット、スクリーンショット、issue、PR に貼らない
 
 ## 6. bot token を保存する（初回だけ／token 変更時）
 
-Codex App では、チャット欄へ次を入力します。
+Codex App では、`@remotty` を選びます。
 この操作は、今開いているリポジトリへ token を保存しません。
 一度保存すれば、同じ Windows ユーザーでは再利用できます。
 token を変える時だけ、もう一度実行します。
 
 ```text
-/remotty-configure
+Telegram bot token を保存して
 ```
+
+`remotty` は、隠し入力用の PowerShell を開きます。
+token は、その PowerShell にだけ入力します。
+Codex App のチャット欄には貼らないでください。
 
 Codex CLI では、次を実行します。
 
@@ -167,12 +173,12 @@ remotty telegram configure --config $configPath
 
 ## 7. ブリッジを起動する（使うたび）
 
-Codex App では、チャット欄へ次を入力します。
+Codex App では、`@remotty` を選びます。
 起動時は `%APPDATA%\remotty\bridge.toml` の設定を使います。
 今開いているリポジトリへ状態ファイルは置きません。
 
 ```text
-/remotty-start
+ブリッジを起動して
 ```
 
 Codex CLI では、次を実行します。
@@ -190,10 +196,11 @@ Telegram から使う間は、ブリッジを起動したままにします。
 Telegram の private chat で、bot へ任意のメッセージを送ります。
 
 bot は `remotty pairing code` を返します。
-Codex App では、次を実行します。
+Codex App では、`@remotty` を選びます。
+次のように依頼します。
 
 ```text
-/remotty-access-pair <code>
+pairing code <code> でペアリングして
 ```
 
 Codex CLI では、次を実行します。
@@ -203,9 +210,10 @@ remotty telegram access-pair <code> --config $configPath
 ```
 
 次に、送信者を許可します。
+Codex App では、`@remotty` を選びます。
 
 ```text
-/remotty-policy-allowlist
+Telegram の allowlist を有効化して
 ```
 
 Codex CLI では、次を実行します。
@@ -218,10 +226,11 @@ remotty telegram policy allowlist --config $configPath
 
 ## 9. Codex スレッドを選ぶ（Telegram チャットごと）
 
-Codex App では、次を実行します。
+Codex App では、`@remotty` を選びます。
+次のように依頼します。
 
 ```text
-/remotty-sessions
+Codex スレッドを一覧して
 ```
 
 Codex CLI では、次を実行します。
@@ -269,7 +278,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 ### 安全性の Q&A
 
-> Q. `/remotty-use-this-project` は、プロジェクトにファイルを作りますか?
+> Q. プロジェクト登録は、プロジェクトにファイルを作りますか?
 >
 > A. 作りません。設定は `%APPDATA%\remotty\bridge.toml` へ保存します。プロジェクトのルートに `.remotty` などは作りません。気になる場合は、実行後に `git status` を確認してください。
 
@@ -287,7 +296,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 > Q. 誰でも私の Codex を操作できますか?
 >
-> A. できません。ペアリングした送信者だけを許可します。ペアリング後は `/remotty-policy-allowlist` を実行してください。
+> A. できません。ペアリングした送信者だけを許可します。ペアリング後は `@remotty` で allowlist の有効化を依頼してください。
 > これにより、設定済みの送信者だけが操作できます。
 
 > Q. Telegram から承認操作を押しても安全ですか?
@@ -300,13 +309,13 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 > Q. token が漏れたかもしれない時は?
 >
-> A. Telegram の `@BotFather` で token を再発行してください。その後、`/remotty-configure` で新しい token を保存します。
+> A. Telegram の `@BotFather` で token を再発行してください。その後、`@remotty` で新しい token の保存を依頼します。
 
 ### 接続の Q&A
 
 > Q. bot が返信しません。
 >
-> A. まず `/remotty-start` が動いているか確認します。Codex App では `/remotty-status` と `/remotty-live-env-check` を実行します。PowerShell では `remotty service status` と `remotty telegram live-env-check --config $configPath` を実行します。webhook 状態が `webhook-configured` なら polling へ戻します。
+> A. まずブリッジが動いているか確認します。Codex App では `@remotty` で状態確認を依頼します。PowerShell では `remotty service status` と `remotty telegram live-env-check --config $configPath` を実行します。webhook 状態が `webhook-configured` なら polling へ戻します。
 
 > Q. polling 競合が出ます。
 >
@@ -326,13 +335,13 @@ Stop-Process -Id <PID>
 
 > Q. pairing code が通りません。
 >
-> A. bot との private chat で送ってください。最新の code を使います。期限切れ前に `/remotty-access-pair <code>` を実行してください。
+> A. bot との private chat で送ってください。最新の code を使います。期限切れ前に `@remotty` でペアリングを依頼してください。
 
 ### スレッド選択の Q&A
 
 > Q. Codex スレッドが出ません。
 >
-> A. Codex CLI を更新してから、もう一度試します。Codex App か Codex CLI でスレッドを作ります。その後、もう一度 `/remotty-sessions` を実行します。
+> A. Codex CLI を更新してから、もう一度試します。Codex App か Codex CLI でスレッドを作ります。その後、`@remotty` で一覧を依頼します。
 
 ## 関連
 

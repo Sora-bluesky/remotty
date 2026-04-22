@@ -56,18 +56,21 @@ Telegram bot を作る前に試す場合は、
 
 ## 主なコマンド
 
-Codex App では、ローカルの `remotty` プラグインから使います。
+Codex App では、チャット欄で `@` を入力します。
+候補から `remotty` を選び、次のように依頼します。
 
 ```text
-/remotty-configure
-/remotty-use-this-project
-/remotty-start
-/remotty-access-pair <code>
-/remotty-policy-allowlist
-/remotty-status
-/remotty-live-env-check
-/remotty-sessions
+Telegram bot token を保存して
+このプロジェクトを remotty に登録して
+ブリッジを起動して
+Telegram に表示された pairing code でペアリングして
+Telegram の allowlist を有効化して
+状態を確認して
+Codex スレッドを一覧して
 ```
+
+bot token は、`remotty` が開く PowerShell にだけ入力します。
+Codex App のチャット欄には貼らないでください。
 
 Codex CLI を使う場合は、PowerShell から同じ設定を行えます。
 どちらの場合も、ブリッジはローカルの `codex` 実行ファイルを呼びます。
@@ -88,8 +91,9 @@ Telegram で使います。
 
 ## 安全な情報の扱い
 
-- `/remotty-configure` で bot token を保護領域へ保存する
+- `@remotty` で bot token を保護領域へ保存する
 - `remotty` 専用の Telegram bot を使う
+- token を Codex App のチャット欄へ貼らない
 - token や `api.telegram.org/bot...` の URL を issue へ貼らない
 - プロジェクトファイルと `%APPDATA%\remotty` の状態を分ける
 

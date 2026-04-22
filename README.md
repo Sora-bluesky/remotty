@@ -59,18 +59,21 @@ Use the [Fakechat Demo](docs/fakechat-demo.md).
 
 ## Main Commands
 
-If you use Codex App, install the local `remotty` plugin and run:
+If you use Codex App, type `@` in the chat box.
+Select `remotty`, then ask for the task:
 
 ```text
-/remotty-configure
-/remotty-use-this-project
-/remotty-start
-/remotty-access-pair <code>
-/remotty-policy-allowlist
-/remotty-status
-/remotty-live-env-check
-/remotty-sessions
+Store the Telegram bot token
+Register this project with remotty
+Start the bridge
+Pair with the code shown in Telegram
+Lock down Telegram access to the allowlist
+Check status
+List Codex threads
 ```
+
+Enter the bot token only in the PowerShell window that `remotty` opens.
+Do not paste the token into Codex App chat.
 
 If you use Codex CLI, run the same setup from PowerShell.
 The bridge calls the local `codex` executable in both cases.
@@ -91,8 +94,9 @@ Run these in Telegram:
 
 ## Security
 
-- Use `/remotty-configure` so bot tokens stay in Windows protected storage.
+- Use `@remotty` so bot tokens stay in Windows protected storage.
 - Use a dedicated Telegram bot for `remotty`.
+- Do not paste bot tokens into Codex App chat.
 - Do not paste bot tokens or `api.telegram.org/bot...` URLs into issues.
 - Keep project files separate from `%APPDATA%\remotty` runtime state.
 

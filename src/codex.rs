@@ -203,13 +203,16 @@ impl CodexRunner {
             "--skip-git-repo-check".to_owned(),
             "--sandbox".to_owned(),
             self.config.sandbox.clone(),
-            "--model".to_owned(),
-            self.config.model.clone(),
             "--config".to_owned(),
             format!("approval_policy=\"{}\"", self.config.approval),
             "--cd".to_owned(),
             workspace.path.display().to_string(),
         ];
+        let model = self.config.model.trim();
+        if !model.is_empty() {
+            args.push("--model".to_owned());
+            args.push(model.to_owned());
+        }
         if let Some(profile) = self
             .config
             .profile
@@ -403,6 +406,42 @@ mod tests {
         let args = runner.base_args(&workspace());
 
         assert!(!args.iter().any(|arg| arg == "--profile"));
+    }
+
+    #[test]
+    fn base_args_omit_model_when_not_configured() {
+        let runner = CodexRunner::new(CodexConfig {
+            binary: "codex".to_owned(),
+            model: String::new(),
+            sandbox: "read-only".to_owned(),
+            approval: "never".to_owned(),
+            transport: CodexTransport::Exec,
+            profile: None,
+        });
+
+        let args = runner.base_args(&workspace());
+
+        assert!(!args.iter().any(|arg| arg == "--model"));
+    }
+
+    #[test]
+    fn base_args_include_model_when_configured() {
+        let runner = CodexRunner::new(CodexConfig {
+            binary: "codex".to_owned(),
+            model: "gpt-5.4".to_owned(),
+            sandbox: "read-only".to_owned(),
+            approval: "never".to_owned(),
+            transport: CodexTransport::Exec,
+            profile: None,
+        });
+
+        let args = runner.base_args(&workspace());
+        let model_index = args
+            .iter()
+            .position(|arg| arg == "--model")
+            .expect("missing --model");
+
+        assert_eq!(args.get(model_index + 1), Some(&"gpt-5.4".to_owned()));
     }
 
     #[test]

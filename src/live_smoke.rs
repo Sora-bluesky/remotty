@@ -203,7 +203,7 @@ fn resolve_live_bot_token(base_config: &Config) -> Result<String> {
         .or_else(|| load_secret(&base_config.telegram.token_secret_ref).ok())
         .ok_or_else(|| {
             anyhow!(
-                "missing Telegram bot token. Run `/remotty-configure` or set LIVE_TELEGRAM_BOT_TOKEN."
+                "missing Telegram bot token. Use the `remotty-configure` skill or set LIVE_TELEGRAM_BOT_TOKEN."
             )
         })
 }
@@ -243,7 +243,9 @@ fn infer_single_sender_id(base_config: &Config) -> Result<i64> {
 
     match sender_ids.len() {
         1 => Ok(*sender_ids.iter().next().expect("one sender id")),
-        0 => bail!("no paired Telegram sender found. Run `/remotty-pair` first."),
+        0 => bail!(
+            "no paired Telegram sender found. In Codex App, use `@remotty` and ask it to pair your Telegram code, or run `remotty telegram access-pair <code>`."
+        ),
         _ => bail!(
             "multiple Telegram senders are allowed. Set LIVE_TELEGRAM_SENDER_ID and LIVE_TELEGRAM_CHAT_ID explicitly."
         ),
@@ -334,6 +336,12 @@ fn write_live_config(root: &Path, base_config: &Config, live: &LiveApprovalEnv) 
         .as_deref()
         .map(|profile| format!("profile = {}\n", toml_string(profile)))
         .unwrap_or_default();
+    let model = base_config.codex.model.trim();
+    let model_line = if model.is_empty() {
+        String::new()
+    } else {
+        format!("model = {}\n", toml_string(model))
+    };
     let config = format!(
         r#"[service]
 run_mode = "console"
@@ -349,8 +357,7 @@ file_base_url = {file_base_url}
 
 [codex]
 binary = {codex_bin}
-model = {model}
-sandbox = {sandbox}
+{model_line}sandbox = {sandbox}
 approval = "on-request"
 transport = "app_server"
 {profile_line}
@@ -387,7 +394,7 @@ checks_profile = "default"
         api_base_url = toml_string(&base_config.telegram.api_base_url),
         file_base_url = toml_string(&base_config.telegram.file_base_url),
         codex_bin = toml_string(&live.codex_bin),
-        model = toml_string(&base_config.codex.model),
+        model_line = model_line,
         sandbox = toml_string(&base_config.codex.sandbox),
         profile_line = profile_line,
         db_path = toml_string(&state_dir.join("bridge.db").display().to_string()),

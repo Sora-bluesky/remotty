@@ -1,6 +1,7 @@
 # remotty plugin
 
-This local plugin wraps the `remotty` bridge with user-facing Codex commands.
+This local plugin wraps the `remotty` bridge with Codex skills.
+In Codex App, type `@`, select `remotty`, then describe the setup task.
 
 Use it for:
 
@@ -9,24 +10,16 @@ Use it for:
 - pairing a Telegram sender into the allowlist
 - bridge start, stop, and status workflows
 - live environment checks before manual smoke runs
-- approval-accept and approval-decline smoke runs
-- local fakechat demo before Telegram setup
 
-Available commands:
+Example requests:
 
-- `/remotty-configure`
-- `/remotty-use-this-project`
-- `/remotty-access-pair`: pair from a code returned by the running Telegram bridge
-- `/remotty-pair`: fallback pairing when the bridge cannot reply with a code
-- `/remotty-policy-allowlist`
-- `/remotty-start`
-- `/remotty-status`
-- `/remotty-stop`
-- `/remotty-sessions`
-- `/remotty-fakechat-demo`
-- `/remotty-live-env-check`
-- `/remotty-smoke-approval-accept`
-- `/remotty-smoke-approval-decline`
+- `Store the Telegram bot token`
+- `Register this project with remotty`
+- `Start the bridge`
+- `Pair with the code shown in Telegram`
+- `Lock down Telegram access to the allowlist`
+- `Check status`
+- `List Codex threads`
 
 The plugin lives in `plugins/remotty/` and is listed by the package-local
 marketplace in `.agents/plugins/marketplace.json`.

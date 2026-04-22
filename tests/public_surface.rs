@@ -53,8 +53,46 @@ fn gitleaks_workflow_keeps_ci_secret_scan_enabled() -> Result<()> {
 #[test]
 fn npm_package_keeps_binary_install_contract() -> Result<()> {
     let package = std::fs::read_to_string(repo_root().join("package.json"))?;
+    let bridge_config = std::fs::read_to_string(repo_root().join("bridge.toml"))?;
     let installer = std::fs::read_to_string(repo_root().join("npm").join("install.js"))?;
     let wrapper = std::fs::read_to_string(repo_root().join("bin").join("remotty.js"))?;
+    let plugin_manifest = std::fs::read_to_string(
+        repo_root()
+            .join("plugins")
+            .join("remotty")
+            .join(".codex-plugin")
+            .join("plugin.json"),
+    )?;
+    let plugin_readme = std::fs::read_to_string(
+        repo_root()
+            .join("plugins")
+            .join("remotty")
+            .join("README.md"),
+    )?;
+    let configure_skill = std::fs::read_to_string(
+        repo_root()
+            .join("plugins")
+            .join("remotty")
+            .join("skills")
+            .join("remotty-configure")
+            .join("SKILL.md"),
+    )?;
+    let start_skill = std::fs::read_to_string(
+        repo_root()
+            .join("plugins")
+            .join("remotty")
+            .join("skills")
+            .join("remotty-start")
+            .join("SKILL.md"),
+    )?;
+    let status_skill = std::fs::read_to_string(
+        repo_root()
+            .join("plugins")
+            .join("remotty")
+            .join("skills")
+            .join("remotty-status")
+            .join("SKILL.md"),
+    )?;
     let release_workflow = std::fs::read_to_string(
         repo_root()
             .join(".github")
@@ -67,6 +105,11 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     let development_doc = std::fs::read_to_string(repo_root().join("docs").join("development.md"))?;
 
     assert!(package.contains(r#""postinstall": "node npm/install.js""#));
+    assert!(
+        !bridge_config
+            .lines()
+            .any(|line| line.trim_start().starts_with("model ="))
+    );
     assert!(package.contains(r#""remotty": "bin/remotty.js""#));
     assert!(package.contains(r#""bridge.toml""#));
     assert!(package.contains(r#""plugins/""#));
@@ -75,6 +118,14 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(installer.contains("remotty-arm64.exe"));
     assert!(installer.contains("releases/download"));
     assert!(wrapper.contains("remotty.exe"));
+    assert!(plugin_manifest.contains(r#""skills": "./skills/""#));
+    assert!(!plugin_readme.contains("fakechat"));
+    assert!(!plugin_readme.contains("/remotty-fakechat-demo"));
+    assert!(!plugin_readme.contains("/remotty-smoke"));
+    assert!(configure_skill.contains("Telegram bot token"));
+    assert!(configure_skill.contains("PowerShell window"));
+    assert!(start_skill.contains("remotty service start"));
+    assert!(status_skill.contains("remotty telegram policy allowlist"));
     assert!(release_workflow.contains("actions/setup-node@v4"));
     assert!(release_workflow.contains("npm pack --pack-destination release"));
     assert!(release_workflow.contains("cp release/remotty-*.tgz release/remotty.tgz"));
@@ -85,7 +136,7 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(readme.contains("Codex thread"));
     assert!(readme.contains("Telegram Quickstart"));
     assert!(readme.contains("Advanced CLI Mode"));
-    assert!(quickstart.contains("/remotty-use-this-project"));
+    assert!(quickstart.contains("Register this project with remotty"));
     assert!(!readme.contains("releases/latest/download/remotty.tgz"));
     assert!(development_doc.contains("NPM_TOKEN"));
     assert!(development_doc.contains("npm publish .\\release\\remotty.tgz"));
@@ -110,10 +161,10 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(quickstart.contains("/remotty-sessions <thread_id>"));
-    assert!(quickstart.contains("/remotty-use-this-project"));
+    assert!(quickstart.contains("Register this project with remotty"));
     assert!(quickstart.contains("Codex CLI users run"));
     assert!(quickstart.contains("remotty config workspace upsert"));
-    assert!(quickstart.contains("Codex App chat box"));
+    assert!(quickstart.contains("Select `remotty` from the suggestions"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains("remotty local plugins"));
     assert!(quickstart.contains("one-time setup"));
@@ -127,15 +178,16 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("Thread Selection Q&A"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains("paired senders"));
+    assert!(quickstart.contains("Do not paste the token into Codex App chat."));
     assert!(quickstart.contains("Regenerate it with `@BotFather`"));
     assert!(!quickstart.contains("writable_roots"));
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
     assert!(quickstart_ja.contains("/remotty-sessions <thread_id>"));
-    assert!(quickstart_ja.contains("/remotty-use-this-project"));
+    assert!(quickstart_ja.contains("このプロジェクトを remotty に登録して"));
     assert!(quickstart_ja.contains("Codex CLI では"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
-    assert!(quickstart_ja.contains("Codex App のチャット欄"));
+    assert!(quickstart_ja.contains("候補から `remotty` を選びます"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains("remotty local plugins"));
     assert!(quickstart_ja.contains("初回だけ"));
@@ -149,6 +201,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("スレッド選択の Q&A"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains("許可済み送信者"));
+    assert!(quickstart_ja.contains("Codex App のチャット欄には貼らないでください"));
     assert!(quickstart_ja.contains("@BotFather` で token を再発行"));
     assert!(!quickstart_ja.contains("writable_roots"));
     assert!(!quickstart_ja.contains("path = \"C:/Users/you/Documents/project\""));

@@ -67,7 +67,7 @@ npm publish .\release\remotty.tgz
 pairing 済み sender が1件なら、`chat_id` と `sender_id` は自動で決まります。
 `LIVE_WORKSPACE` が未設定なら、`target/live-smoke-workspace` を使います。
 その場合、`.remotty-live-smoke-ok` も自動で作ります。
-`/remotty-live-env-check` は、bot が polling で使える状態かも確認します。
+実機環境の確認では、bot が polling で使える状態かも確認します。
 webhook が残っていない場合は `polling-ready` と表示します。
 webhook が残っている場合は `webhook-configured` と表示します。
 
