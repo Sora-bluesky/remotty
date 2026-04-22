@@ -226,5 +226,16 @@
                 "Added a release coverage audit that blocks the next source version until the completed release is recorded and tagged."
             )
         }
+        @{
+            Version = "0.2.1"
+            Commit = "74ed8f4fd48b9ed8ce7584981633afff707bdcfe"
+            Title = "Saved Codex thread selection"
+            Notes = @(
+                "Released saved Codex thread listing through the app-server interface."
+                "Added Telegram commands for selecting the saved thread used by a chat."
+                "Stored chat-to-thread bindings under the user config directory instead of the project directory."
+                "Marked v0.2.1 as a required release before later source versions can pass CI."
+            )
+        }
     )
 }
