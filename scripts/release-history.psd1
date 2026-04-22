@@ -284,7 +284,7 @@
         }
         @{
             Version = "0.2.6"
-            Commit = "0000000000000000000000000000000000000000"
+            Commit = "733536e0c98779282070e7135be7dabfa7448c1b"
             Title = "App-server relay hardening"
             Notes = @(
                 "Declined unsupported app-server requests by default so unknown approval prompts do not hang silently."
