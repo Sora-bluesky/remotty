@@ -265,7 +265,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 承認結果は同じ Codex の処理へ返ります。
 
-## 困った時
+## Q&A
 
 ### 安全性の Q&A
 
@@ -302,42 +302,37 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 >
 > A. Telegram の `@BotFather` で token を再発行してください。その後、`/remotty-configure` で新しい token を保存します。
 
-### bot が返信しない
+### 接続の Q&A
 
-- `/remotty-start` が動いているか確認します。
-- Codex App では `/remotty-status` を実行します。
-- Codex App では `/remotty-live-env-check` を実行します。
-- PowerShell では `remotty service status` を実行します。
-- PowerShell では `remotty telegram live-env-check --config $configPath` を実行します。
-- webhook 状態が `webhook-configured` なら polling へ戻します。
+> Q. bot が返信しません。
+>
+> A. まず `/remotty-start` が動いているか確認します。Codex App では `/remotty-status` と `/remotty-live-env-check` を実行します。PowerShell では `remotty service status` と `remotty telegram live-env-check --config $configPath` を実行します。webhook 状態が `webhook-configured` なら polling へ戻します。
 
-### Codex スレッドが出ない
-
-- Codex CLI を更新してから、もう一度試します。
-- Codex App か Codex CLI でスレッドを作ります。
-- もう一度 `/remotty-sessions` を実行します。
-
-### pairing code が通らない
-
-- bot との private chat で送ってください。
-- 最新の code を使ってください。
-- 期限切れ前に `/remotty-access-pair <code>` を実行してください。
-
-### polling 競合が出る
-
-同じ Telegram bot を polling できるプロセスは1つだけです。
-
-Windows では候補を確認できます。
+> Q. polling 競合が出ます。
+>
+> A. 同じ Telegram bot を polling できるプロセスは1つだけです。Windows では次のコマンドで候補を確認できます。
 
 ```powershell
 Get-Process remotty, codex -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path
 ```
 
-同じ bot を読んでいるプロセスを止めます。
+> 同じ bot を読んでいるプロセスを止めます。
 
 ```powershell
 Stop-Process -Id <PID>
 ```
+
+### ペアリングの Q&A
+
+> Q. pairing code が通りません。
+>
+> A. bot との private chat で送ってください。最新の code を使います。期限切れ前に `/remotty-access-pair <code>` を実行してください。
+
+### スレッド選択の Q&A
+
+> Q. Codex スレッドが出ません。
+>
+> A. Codex CLI を更新してから、もう一度試します。Codex App か Codex CLI でスレッドを作ります。その後、もう一度 `/remotty-sessions` を実行します。
 
 ## 関連
 

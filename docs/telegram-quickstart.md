@@ -267,7 +267,7 @@ You can also type:
 
 The decision is returned to the same Codex turn.
 
-## Troubleshooting
+## Q&A
 
 ### Security Q&A
 
@@ -304,42 +304,37 @@ The decision is returned to the same Codex turn.
 >
 > A. Regenerate it with `@BotFather`. Then save the new token with `/remotty-configure`.
 
-### The Bot Does Not Reply
+### Connection Q&A
 
-- Confirm `/remotty-start` is still running.
-- In Codex App, run `/remotty-status`.
-- In Codex App, run `/remotty-live-env-check`.
-- In PowerShell, run `remotty service status`.
-- In PowerShell, run `remotty telegram live-env-check --config $configPath`.
-- If the webhook status is `webhook-configured`, switch the bot back to polling.
+> Q. The bot does not reply.
+>
+> A. First confirm `/remotty-start` is still running. In Codex App, run `/remotty-status` and `/remotty-live-env-check`. In PowerShell, run `remotty service status` and `remotty telegram live-env-check --config $configPath`. If the webhook status is `webhook-configured`, switch the bot back to polling.
 
-### No Codex Threads Appear
-
-- Update Codex CLI, then try again.
-- Start at least one Codex App or Codex CLI thread.
-- Run `/remotty-sessions` again.
-
-### Pairing Code Does Not Work
-
-- Send the message in a private chat with the bot.
-- Use the newest code.
-- Run `/remotty-access-pair <code>` before the code expires.
-
-### Polling Conflict
-
-Only one process can poll the same Telegram bot.
-
-On Windows, list likely processes:
+> Q. I get a polling conflict.
+>
+> A. Only one process can poll the same Telegram bot. On Windows, list likely processes:
 
 ```powershell
 Get-Process remotty, codex -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path
 ```
 
-Stop the process that reads the same bot:
+> Stop the process that reads the same bot:
 
 ```powershell
 Stop-Process -Id <PID>
 ```
+
+### Pairing Q&A
+
+> Q. The pairing code does not work.
+>
+> A. Send the message in a private chat with the bot. Use the newest code. Run `/remotty-access-pair <code>` before the code expires.
+
+### Thread Selection Q&A
+
+> Q. No Codex threads appear.
+>
+> A. Update Codex CLI, then try again. Start at least one Codex App or Codex CLI thread. Run `/remotty-sessions` again.
 
 ## Related
 
