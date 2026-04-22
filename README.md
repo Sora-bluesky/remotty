@@ -65,33 +65,33 @@ It also explains how `remotty` differs from Codex Remote connections.
 
 ### 1. Install `remotty`
 
-Install from npm:
+- **1. Install from npm.**
 
 ```powershell
 npm install -g remotty
-$remottyRoot = Join-Path (npm root -g) "remotty"
-Set-Location $remottyRoot
-$configDir = Join-Path $env:APPDATA "remotty"
-New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-Copy-Item -Force .\bridge.toml (Join-Path $configDir "bridge.toml")
-$configPath = Join-Path $configDir "bridge.toml"
 ```
 
-The package installs the `remotty` command and downloads the matching Windows binary from the GitHub Release for that package version.
-`npm root -g` returns the global npm package folder. The next two lines move PowerShell into the installed `remotty` folder so `Copy-Item` can read the bundled `bridge.toml`. Open the same folder in the Codex App in step 3.
-The remaining lines copy the starter config to `%APPDATA%\remotty\bridge.toml`, so your settings and runtime state are not stored inside the global npm package folder.
+This installs the `remotty` command and downloads the matching Windows binary.
 
-If you need to install directly from the GitHub Release tarball:
+- **2. Move into the installed package folder.**
 
 ```powershell
-npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
 $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
+```
+
+Open this same `$remottyRoot` folder in the Codex App when you install the local plugin.
+
+- **3. Copy the starter config to your user config folder.**
+
+```powershell
 $configDir = Join-Path $env:APPDATA "remotty"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item -Force .\bridge.toml (Join-Path $configDir "bridge.toml")
 $configPath = Join-Path $configDir "bridge.toml"
 ```
+
+Your settings and runtime state now live under `%APPDATA%\remotty`, not inside the global npm package folder.
 
 For source builds, see [Development](docs/development.md).
 

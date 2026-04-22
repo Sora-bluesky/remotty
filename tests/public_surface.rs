@@ -80,7 +80,7 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
     assert!(readme.contains("npm install -g remotty"));
-    assert!(readme.contains("releases/latest/download/remotty.tgz"));
+    assert!(!readme.contains("releases/latest/download/remotty.tgz"));
     assert!(development_doc.contains("NPM_TOKEN"));
     assert!(development_doc.contains("npm publish .\\release\\remotty.tgz"));
 

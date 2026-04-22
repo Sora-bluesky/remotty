@@ -18,36 +18,33 @@
 
 ## 1. `remotty` を入れる
 
-`npm` から入れます。
+- **1. `npm` からインストールします。**
 
 ```powershell
 npm install -g remotty
-$remottyRoot = Join-Path (npm root -g) "remotty"
-Set-Location $remottyRoot
-$configDir = Join-Path $env:APPDATA "remotty"
-New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-Copy-Item -Force .\bridge.toml (Join-Path $configDir "bridge.toml")
-$configPath = Join-Path $configDir "bridge.toml"
 ```
 
-この手順で `remotty` コマンドが入り、同じ版の Windows 用バイナリも取得されます。
-`npm root -g` は、グローバル npm パッケージの保存先を返します。
-次の2行で、同梱の `bridge.toml` を `Copy-Item` で読める場所へ移動します。
-手順3では、同じフォルダを Codex App から開きます。
-残りの行は、設定の土台を `%APPDATA%\remotty\bridge.toml` へコピーします。
-設定と実行時の状態を、グローバル npm パッケージフォルダに置かないためです。
+このコマンドで `remotty` が入り、同じ版の Windows 用バイナリも取得されます。
 
-GitHub Release の tarball から直接入れたい場合は、次を使います。
+- **2. インストール先のフォルダへ移動します。**
 
 ```powershell
-npm install -g https://github.com/Sora-bluesky/remotty/releases/latest/download/remotty.tgz
 $remottyRoot = Join-Path (npm root -g) "remotty"
 Set-Location $remottyRoot
+```
+
+あとでローカルプラグインを入れる時に、この `$remottyRoot` フォルダを Codex App から開きます。
+
+- **3. 設定ファイルをユーザー用の設定フォルダへコピーします。**
+
+```powershell
 $configDir = Join-Path $env:APPDATA "remotty"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item -Force .\bridge.toml (Join-Path $configDir "bridge.toml")
 $configPath = Join-Path $configDir "bridge.toml"
 ```
+
+設定と実行時の状態は、グローバル npm パッケージフォルダではなく `%APPDATA%\remotty` に置かれます。
 
 ## 2. Telegram bot を作る
 
