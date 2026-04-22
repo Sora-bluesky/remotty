@@ -194,5 +194,16 @@
                 "Included ``docs/`` in the npm package so quickstart and demo links work after installation."
             )
         }
+        @{
+            Version = "0.1.23"
+            Commit = "1d81d548fca096b9bedc941cc20e5b1deb5dd3be"
+            Title = "Codex Telegram setup polish"
+            Notes = @(
+                "Clarified the npm install, config copy, Codex App plugin setup, pairing, and allowlist flow across public docs."
+                "Updated Telegram approval notices and buttons to use global-friendly Approve and Deny labels."
+                "Resolved relative storage paths from the copied config file location so npm installs keep runtime state under the user config directory."
+                "Reviewed shipped public docs and bridge.toml with Opus, then verified the package contents and secret scans before release."
+            )
+        }
     )
 }
