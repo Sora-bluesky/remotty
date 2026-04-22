@@ -33,6 +33,7 @@ const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
 const MAX_TELEGRAM_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_INFINITE_AUTO_TURNS: usize = 16;
 const AUTO_CONTINUE_STOP_MARKER: &str = "CHANNEL_WAITING";
+const TELEGRAM_MESSAGE_CHAR_LIMIT: usize = 4096;
 
 #[derive(Clone, Default)]
 struct ActiveTurnRegistry {
@@ -47,17 +48,17 @@ struct ActiveTurnSender {
 }
 
 struct ActiveTurnGuard {
-    lane_id: String,
+    key: String,
     id: u64,
     registry: ActiveTurnRegistry,
 }
 
 impl ActiveTurnRegistry {
-    fn register(&self, lane_id: &str) -> (ActiveTurnGuard, mpsc::UnboundedReceiver<CodexRequest>) {
+    fn register(&self, key: &str) -> (ActiveTurnGuard, mpsc::UnboundedReceiver<CodexRequest>) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.inner.lock().expect("active turn registry").insert(
-            lane_id.to_owned(),
+            key.to_owned(),
             ActiveTurnSender {
                 id,
                 sender: sender.clone(),
@@ -65,7 +66,7 @@ impl ActiveTurnRegistry {
         );
         (
             ActiveTurnGuard {
-                lane_id: lane_id.to_owned(),
+                key: key.to_owned(),
                 id,
                 registry: self.clone(),
             },
@@ -73,12 +74,19 @@ impl ActiveTurnRegistry {
         )
     }
 
-    fn send_followup(&self, lane_id: &str, request: CodexRequest) -> bool {
+    fn is_active(&self, key: &str) -> bool {
+        self.inner
+            .lock()
+            .expect("active turn registry")
+            .contains_key(key)
+    }
+
+    fn send_followup(&self, key: &str, request: CodexRequest) -> bool {
         let sender = self
             .inner
             .lock()
             .expect("active turn registry")
-            .get(lane_id)
+            .get(key)
             .map(|entry| entry.sender.clone());
         sender
             .map(|sender| sender.send(request).is_ok())
@@ -90,11 +98,11 @@ impl Drop for ActiveTurnGuard {
     fn drop(&mut self) {
         let mut senders = self.registry.inner.lock().expect("active turn registry");
         if senders
-            .get(&self.lane_id)
+            .get(&self.key)
             .map(|entry| entry.id == self.id)
             .unwrap_or(false)
         {
-            senders.remove(&self.lane_id);
+            senders.remove(&self.key);
         }
     }
 }
@@ -406,17 +414,21 @@ async fn handle_message(
                 .await;
         }
         let reply = reply_result?;
-        let sent = telegram.send_message(update.chat_id, &reply).await?;
         if let Some(lane) = store.find_lane(update.chat_id, &update.thread_key)? {
-            store.insert_message(
+            send_and_store_telegram_chunks(
+                store,
+                telegram,
+                update.chat_id,
                 &lane.lane_id,
                 None,
-                "outbound",
                 "telegram_control",
-                Some(sent.message_id),
-                Some(&reply),
-                None,
-            )?;
+                &reply,
+            )
+            .await?;
+        } else {
+            for chunk in split_telegram_message(&reply, TELEGRAM_MESSAGE_CHAR_LIMIT) {
+                telegram.send_message(update.chat_id, &chunk).await?;
+            }
         }
         return Ok(());
     }
@@ -436,9 +448,10 @@ async fn handle_message(
                 let reply = if !update.attachments.is_empty() {
                     "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
                         .to_owned()
-                } else if active_turns
-                    .send_followup(&lane.lane_id, CodexRequest::new(update.text.clone()))
-                {
+                } else if active_turns.send_followup(
+                    &active_turn_key_for_lane(lane),
+                    CodexRequest::new(update.text.clone()),
+                ) {
                     "実行中のターンへ追加入力を送りました。".to_owned()
                 } else {
                     "現在の処理が続いています。完了後にもう一度送ってください。".to_owned()
@@ -487,6 +500,34 @@ async fn handle_message(
         Some(&update.text),
         Some(&update.payload_json),
     )?;
+
+    if config.codex.transport == CodexTransport::AppServer {
+        if let Some(session_id) = selected_session_id.as_deref() {
+            if active_turns.is_active(session_id) {
+                let reply = if !update.attachments.is_empty() {
+                    "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
+                        .to_owned()
+                } else if active_turns
+                    .send_followup(session_id, CodexRequest::new(update.text.clone()))
+                {
+                    "実行中のターンへ追加入力を送りました。".to_owned()
+                } else {
+                    "現在の処理が続いています。完了後にもう一度送ってください。".to_owned()
+                };
+                let sent = telegram.send_message(update.chat_id, &reply).await?;
+                store.insert_message(
+                    &lane.lane_id,
+                    None,
+                    "outbound",
+                    "telegram_steer_status",
+                    Some(sent.message_id),
+                    Some(&reply),
+                    None,
+                )?;
+                return Ok(());
+            }
+        }
+    }
 
     store.update_lane_state(
         &lane.lane_id,
@@ -546,7 +587,8 @@ async fn handle_message(
         &workspace.continue_prompt,
     );
     let active_turn = if config.codex.transport == CodexTransport::AppServer {
-        let (guard, followups) = active_turns.register(&lane.lane_id);
+        let key = active_turn_key(&lane.lane_id, selected_session_id.as_deref());
+        let (guard, followups) = active_turns.register(&key);
         Some((guard, followups))
     } else {
         None
@@ -586,21 +628,23 @@ async fn handle_message(
         truncate(&outcome.last_message, config.policy.max_output_chars)
     };
 
+    let reply_chunks = split_telegram_message(&reply, TELEGRAM_MESSAGE_CHAR_LIMIT);
+    let first_reply = reply_chunks.first().map(String::as_str).unwrap_or("");
     if let Err(error) = telegram
-        .edit_message(update.chat_id, progress_message.message_id, &reply)
+        .edit_message(update.chat_id, progress_message.message_id, first_reply)
         .await
     {
         warn!("failed to edit progress message: {error:#}");
-        let sent = telegram.send_message(update.chat_id, &reply).await?;
-        store.insert_message(
+        send_and_store_telegram_chunks(
+            store,
+            telegram,
+            update.chat_id,
             &lane.lane_id,
             Some(&run.run_id),
-            "outbound",
             "telegram_text",
-            Some(sent.message_id),
-            Some(&reply),
-            None,
-        )?;
+            &reply,
+        )
+        .await?;
     } else {
         store.insert_message(
             &lane.lane_id,
@@ -608,9 +652,21 @@ async fn handle_message(
             "outbound",
             "telegram_text",
             Some(progress_message.message_id),
-            Some(&reply),
+            Some(first_reply),
             None,
         )?;
+        for chunk in reply_chunks.iter().skip(1) {
+            let sent = telegram.send_message(update.chat_id, chunk).await?;
+            store.insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_text",
+                Some(sent.message_id),
+                Some(chunk.as_str()),
+                None,
+            )?;
+        }
     }
 
     let next_state = if outcome.approval_pending {
@@ -1276,6 +1332,85 @@ fn format_processing_message(is_resume: bool) -> String {
     } else {
         "処理を開始しました。完了したら、このメッセージを更新します。".to_owned()
     }
+}
+
+fn active_turn_key(lane_id: &str, session_id: Option<&str>) -> String {
+    session_id.unwrap_or(lane_id).to_owned()
+}
+
+fn active_turn_key_for_lane(lane: &LaneRecord) -> String {
+    active_turn_key(&lane.lane_id, lane.codex_session_id.as_deref())
+}
+
+async fn send_and_store_telegram_chunks(
+    store: &Store,
+    telegram: &impl TelegramApi,
+    chat_id: i64,
+    lane_id: &str,
+    run_id: Option<&str>,
+    message_kind: &str,
+    text: &str,
+) -> Result<()> {
+    for chunk in split_telegram_message(text, TELEGRAM_MESSAGE_CHAR_LIMIT) {
+        let sent = telegram.send_message(chat_id, &chunk).await?;
+        store.insert_message(
+            lane_id,
+            run_id,
+            "outbound",
+            message_kind,
+            Some(sent.message_id),
+            Some(chunk.as_str()),
+            None,
+        )?;
+    }
+    Ok(())
+}
+
+fn split_telegram_message(text: &str, limit: usize) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    if limit == 0 {
+        return vec![text.to_owned()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for line in text.split_inclusive('\n') {
+        if current.chars().count() + line.chars().count() <= limit {
+            current.push_str(line);
+            continue;
+        }
+        if !current.is_empty() {
+            chunks.push(current);
+            current = String::new();
+        }
+        if line.chars().count() <= limit {
+            current.push_str(line);
+        } else {
+            chunks.extend(split_long_telegram_segment(line, limit));
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
+fn split_long_telegram_segment(text: &str, limit: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if current.chars().count() == limit {
+            chunks.push(current);
+            current = String::new();
+        }
+        current.push(ch);
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
 }
 
 async fn warn_if_workspace_has_uncommitted_changes(
@@ -2982,6 +3117,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn active_turn_key_prefers_selected_session() {
+        assert_eq!(
+            active_turn_key("lane-1", Some("thread-1")),
+            "thread-1".to_owned()
+        );
+        assert_eq!(active_turn_key("lane-1", None), "lane-1".to_owned());
+    }
+
+    #[test]
+    fn split_telegram_message_keeps_chunks_within_limit() {
+        let text = format!("{}\n{}", "あ".repeat(5), "b".repeat(11));
+        let chunks = split_telegram_message(&text, 10);
+
+        assert_eq!(
+            chunks,
+            vec![
+                "あああああ\n".to_owned(),
+                "bbbbbbbbbb".to_owned(),
+                "b".to_owned()
+            ]
+        );
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 10));
+    }
+
     #[tokio::test]
     async fn workspace_has_uncommitted_changes_detects_untracked_file() {
         let temp = tempdir().expect("tempdir should be created");
@@ -3043,7 +3203,7 @@ mod tests {
             .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-1"))
             .expect("lane should update");
         let active_turns = ActiveTurnRegistry::default();
-        let (_guard, mut receiver) = active_turns.register(&lane.lane_id);
+        let (_guard, mut receiver) = active_turns.register("thread-1");
 
         handle_message(
             &config,

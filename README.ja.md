@@ -36,10 +36,6 @@ Telegram bot へメッセージを送ります。
 
 席を離れている時に、Windows PC 上の Codex 作業を Telegram から続けたい場合に使います。
 
-Codex Remote connections は、プロジェクトが SSH 先にある時の機能です。
-Codex App をリモートマシンへ接続します。
-`remotty` は、Windows PC 上の Codex へ Telegram から届く入口です。
-
 ## 必要なもの
 
 - Windows 10 または Windows 11
@@ -99,6 +95,9 @@ Telegram で使います。
 - [高度な CLI モード](docs/exec-transport.ja.md)
 - [更新時の注意](docs/upgrading.ja.md)
 - [開発者向け情報](docs/development.ja.md)
+
+補足: SSH 先のプロジェクトで作業する場合は、Codex Remote connections も選択肢です。
+`remotty` は、Telegram から手元の Windows PC 上の Codex 作業へ戻るためのツールです。
 
 ## ライセンス
 

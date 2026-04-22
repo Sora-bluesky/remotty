@@ -204,7 +204,6 @@ Stop-Process -Id <PID>
 - [高度な CLI モード](exec-transport.ja.md)
 - [更新時の注意](upgrading.ja.md)
 
-Codex Remote connections は、Codex App を SSH 先の開発マシンへ接続します。
-コードとシェルがリモートホスト上にある時に使います。
-
-`remotty` は、Windows PC 上の Codex へ Telegram から依頼する時に使います。
+補足: コードとシェルが SSH 先にある場合は、
+Codex Remote connections も選択肢です。
+`remotty` は、Telegram から手元の Windows PC 上の Codex 作業へ戻るためのツールです。

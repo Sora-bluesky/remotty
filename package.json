@@ -1,6 +1,6 @@
 {
   "name": "remotty",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Windows bridge that lets you talk to local Codex from Telegram.",
   "license": "MIT",
   "homepage": "https://github.com/Sora-bluesky/remotty#readme",

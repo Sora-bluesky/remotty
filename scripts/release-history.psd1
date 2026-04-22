@@ -282,5 +282,16 @@
                 "Changed the starter config to use the Codex thread relay transport by default."
             )
         }
+        @{
+            Version = "0.2.6"
+            Commit = "733536e0c98779282070e7135be7dabfa7448c1b"
+            Title = "App-server relay hardening"
+            Notes = @(
+                "Declined unsupported app-server requests by default so unknown approval prompts do not hang silently."
+                "Added timeouts around app-server control writes and request-response calls."
+                "Limited active app-server work to one turn per selected Codex thread while still allowing follow-up steering."
+                "Split long Telegram replies into message-sized chunks when Codex returns a large answer."
+            )
+        }
     )
 }

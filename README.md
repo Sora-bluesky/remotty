@@ -38,10 +38,6 @@ command.
 Use `remotty` when you want to leave your desk and keep steering the Codex work
 that is available on your Windows PC.
 
-Use Codex Remote connections when the project itself lives on an SSH machine.
-That feature connects the Codex App to a remote host. `remotty` is for reaching
-your local Windows Codex setup from Telegram.
-
 ## Requirements
 
 - Windows 10 or Windows 11
@@ -102,6 +98,10 @@ Run these in Telegram:
 - [Advanced CLI Mode](docs/exec-transport.md)
 - [Upgrade Notes](docs/upgrading.md)
 - [Development](docs/development.md)
+
+Note: if your project lives on an SSH host, Codex Remote connections may also
+be useful. `remotty` is for returning to Codex work on your Windows PC from
+Telegram.
 
 ## License
 

@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc;
+use tokio::time::{Duration, timeout};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -14,6 +15,7 @@ use crate::config::{CodexConfig, WorkspaceConfig};
 use crate::store::{ApprovalRequestKind, ApprovalRequestRecord};
 
 const MIN_CODEX_APP_SERVER_VERSION: &str = "0.118.0";
+const APP_SERVER_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexApprovalRequest {
@@ -133,11 +135,14 @@ impl AppServerClient {
         approved: bool,
     ) -> Result<CodexOutcome> {
         let response = approval_response(request, approved)?;
-        self.send_json(&json!({
+        self.send_json_with_timeout(
+            &json!({
             "id": request.transport_request_id,
             "response": response,
             "result": response,
-        }))
+            }),
+            "approval response",
+        )
         .await?;
         self.read_until_pause_or_completion(&request.thread_id, &request.turn_id, None)
             .await
@@ -190,7 +195,8 @@ impl AppServerClient {
         }
         let response = self.call("initialize", initialize_params()).await?;
         assert_supported_app_server_version(&response)?;
-        self.send_json(&json!({ "method": "initialized" })).await?;
+        self.send_json_with_timeout(&json!({ "method": "initialized" }), "initialized")
+            .await?;
         self.initialized = true;
         Ok(())
     }
@@ -198,16 +204,28 @@ impl AppServerClient {
     async fn call(&mut self, method: &str, params: Value) -> Result<Value> {
         let request_id = format!("client-{}", self.next_request_id);
         self.next_request_id += 1;
-        self.send_json(&json!({
-            "id": request_id,
-            "method": method,
-            "params": params,
-        }))
+        self.send_json_with_timeout(
+            &json!({
+                "id": request_id,
+                "method": method,
+                "params": params,
+            }),
+            method,
+        )
         .await?;
 
+        timeout(
+            APP_SERVER_CONTROL_TIMEOUT,
+            self.read_call_response(method, &request_id),
+        )
+        .await
+        .map_err(|_| anyhow!("app-server `{method}` timed out"))?
+    }
+
+    async fn read_call_response(&mut self, method: &str, request_id: &str) -> Result<Value> {
         loop {
             let message = self.read_message().await?;
-            if response_id(&message).as_deref() == Some(request_id.as_str()) {
+            if response_id(&message).as_deref() == Some(request_id) {
                 if let Some(error) = message.get("error") {
                     bail!("app-server `{method}` failed: {error}");
                 }
@@ -267,7 +285,7 @@ impl AppServerClient {
                         approval_resolved_count,
                     });
                 }
-                self.backlog.push_back(message);
+                self.decline_unknown_server_request(&message).await?;
                 continue;
             }
 
@@ -358,11 +376,27 @@ impl AppServerClient {
         turn_id: &str,
         request: CodexRequest,
     ) -> Result<()> {
-        self.send_json(&json!({
-            "method": "turn/steer",
-            "params": turn_steer_params(thread_id, turn_id, request),
-        }))
+        self.send_json_with_timeout(
+            &json!({
+                "method": "turn/steer",
+                "params": turn_steer_params(thread_id, turn_id, request),
+            }),
+            "turn/steer",
+        )
         .await
+    }
+
+    async fn decline_unknown_server_request(&mut self, message: &Value) -> Result<()> {
+        let Some(response) = unknown_server_request_response(message) else {
+            return Ok(());
+        };
+        let method = message
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        warn!("declining unsupported app-server request `{method}`");
+        self.send_json_with_timeout(&response, "unsupported server request")
+            .await
     }
 
     async fn read_message(&mut self) -> Result<Value> {
@@ -404,6 +438,12 @@ impl AppServerClient {
             .await
             .context("failed to flush app-server stdin")?;
         Ok(())
+    }
+
+    async fn send_json_with_timeout(&mut self, value: &Value, operation: &str) -> Result<()> {
+        timeout(APP_SERVER_CONTROL_TIMEOUT, self.send_json(value))
+            .await
+            .map_err(|_| anyhow!("app-server `{operation}` write timed out"))?
     }
 }
 
@@ -654,6 +694,19 @@ fn response_id(message: &Value) -> Option<String> {
         Value::Number(value) => Some(value.to_string()),
         _ => None,
     }
+}
+
+fn unknown_server_request_response(message: &Value) -> Option<Value> {
+    let id = message.get("id")?.clone();
+    let response = json!({
+        "decision": "decline",
+        "reason": "Unsupported app-server request type",
+    });
+    Some(json!({
+        "id": id,
+        "response": response,
+        "result": response,
+    }))
 }
 
 fn parse_approval_request(message: &Value) -> Result<Option<CodexApprovalRequest>> {
@@ -1020,6 +1073,33 @@ mod tests {
 
         let response = approval_response(&request, false).expect("response should build");
         assert_eq!(response, json!({ "decision": "decline" }));
+    }
+
+    #[test]
+    fn builds_decline_response_for_unknown_server_request() {
+        let response = unknown_server_request_response(&json!({
+            "id": "transport-req-unknown",
+            "method": "item/unknown/requestApproval",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "itemId": "item-1"
+            }
+        }))
+        .expect("response should build");
+
+        assert_eq!(
+            response["id"],
+            Value::String("transport-req-unknown".to_owned())
+        );
+        assert_eq!(
+            response["response"]["decision"],
+            Value::String("decline".to_owned())
+        );
+        assert_eq!(
+            response["result"]["decision"],
+            Value::String("decline".to_owned())
+        );
     }
 
     #[test]

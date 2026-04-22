@@ -206,8 +206,6 @@ Stop-Process -Id <PID>
 - [Advanced CLI Mode](exec-transport.md)
 - [Upgrade Notes](upgrading.md)
 
-Codex Remote connections connect the Codex App to an SSH development machine.
-Use them when the code and shell live on a remote host.
-
-Use `remotty` when the Codex setup is on your Windows PC and Telegram should
-send work to it.
+Note: if your code and shell live on an SSH host, Codex Remote connections may
+also be useful. `remotty` is for returning to Codex work on your Windows PC
+from Telegram.
