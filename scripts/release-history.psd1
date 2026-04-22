@@ -249,5 +249,16 @@
                 "Extended fakechat with saved-thread relay checks that do not need Telegram credentials."
             )
         }
+        @{
+            Version = "0.2.3"
+            Commit = "pending"
+            Title = "Permission relay and worktree safety"
+            Notes = @(
+                "Kept app-server permission requests relayed to Telegram."
+                "Kept Telegram approval and denial decisions routed back to the same turn."
+                "Kept session control limited to paired and allowlisted Telegram senders."
+                "Warned before relaying work into a Git repository with uncommitted changes."
+            )
+        }
     )
 }

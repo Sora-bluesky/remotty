@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
@@ -6,6 +7,7 @@ use std::sync::{
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
@@ -499,6 +501,17 @@ async fn handle_message(
             "start".to_owned()
         },
     })?;
+
+    warn_if_workspace_has_uncommitted_changes(
+        config,
+        store,
+        telegram,
+        update.chat_id,
+        &lane.lane_id,
+        &run.run_id,
+        workspace,
+    )
+    .await?;
 
     let progress_text = format_processing_message(selected_session_id.is_some());
     let progress_message = telegram
@@ -1263,6 +1276,75 @@ fn format_processing_message(is_resume: bool) -> String {
     } else {
         "処理を開始しました。完了したら、このメッセージを更新します。".to_owned()
     }
+}
+
+async fn warn_if_workspace_has_uncommitted_changes(
+    config: &Config,
+    store: &Store,
+    telegram: &impl TelegramApi,
+    chat_id: i64,
+    lane_id: &str,
+    run_id: &str,
+    workspace: &crate::config::WorkspaceConfig,
+) -> Result<()> {
+    if config.codex.transport != CodexTransport::AppServer {
+        return Ok(());
+    }
+
+    match workspace_has_uncommitted_changes(&workspace.path).await {
+        Ok(true) => {
+            let text = format_workspace_dirty_warning();
+            let sent = telegram.send_message(chat_id, &text).await?;
+            store.insert_message(
+                lane_id,
+                Some(run_id),
+                "outbound",
+                "telegram_workspace_warning",
+                Some(sent.message_id),
+                Some(&text),
+                None,
+            )?;
+        }
+        Ok(false) => {}
+        Err(error) => {
+            warn!(
+                "failed to inspect workspace {}: {error:#}",
+                workspace.path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn workspace_has_uncommitted_changes(path: &Path) -> Result<bool> {
+    let inside = TokioCommand::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .await?;
+    if !inside.status.success() {
+        return Ok(false);
+    }
+
+    let status = TokioCommand::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["status", "--porcelain=v1", "--untracked-files=normal"])
+        .output()
+        .await?;
+    if !status.status.success() {
+        return Err(anyhow!(
+            "git status failed with exit code {:?}",
+            status.status.code()
+        ));
+    }
+    Ok(!status.stdout.is_empty())
+}
+
+fn format_workspace_dirty_warning() -> String {
+    "このリポジトリには未コミットの変更があります。remotty は処理を続けます。必要なら完了後に `git status` を確認してください。"
+        .to_owned()
 }
 
 fn format_runtime_failure_message() -> String {
@@ -2114,7 +2196,9 @@ mod tests {
         IncomingMessage, InlineKeyboardButton, SavedTelegramAttachment, SendMessageResult,
         TelegramAttachment, TelegramControlCommand, TelegramRemoteFile,
     };
+    use std::fs;
     use std::path::PathBuf;
+    use std::process::Command;
     use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
 
@@ -2895,6 +2979,30 @@ mod tests {
         assert_eq!(
             selected_codex_session_id(&lane, Some(&binding)),
             Some("saved-thread")
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_has_uncommitted_changes_detects_untracked_file() {
+        let temp = tempdir().expect("tempdir should be created");
+        let status = Command::new("git")
+            .arg("init")
+            .arg(temp.path())
+            .status()
+            .expect("git init should run");
+        assert!(status.success());
+
+        assert!(
+            !workspace_has_uncommitted_changes(temp.path())
+                .await
+                .expect("clean worktree should inspect")
+        );
+        fs::write(temp.path().join("note.txt"), "draft").expect("file should write");
+
+        assert!(
+            workspace_has_uncommitted_changes(temp.path())
+                .await
+                .expect("dirty worktree should inspect")
         );
     }
 
