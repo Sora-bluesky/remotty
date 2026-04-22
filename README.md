@@ -106,7 +106,6 @@ Run these in Telegram:
 - [Fakechat Demo](docs/fakechat-demo.md)
 - [Advanced CLI Mode](docs/exec-transport.md)
 - [Upgrade Notes](docs/upgrading.md)
-- [Development](docs/development.md)
 
 Note: if your project lives on an SSH host, Codex Remote connections may also
 be useful. `remotty` is for returning to Codex work on your Windows PC from

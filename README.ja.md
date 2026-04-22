@@ -103,7 +103,6 @@ Telegram で使います。
 - [Fakechat デモ](docs/fakechat-demo.ja.md)
 - [高度な CLI モード](docs/exec-transport.ja.md)
 - [更新時の注意](docs/upgrading.ja.md)
-- [開発者向け情報](docs/development.ja.md)
 
 補足: SSH 先のプロジェクトで作業する場合は、Codex Remote connections も選択肢です。
 `remotty` は、Telegram から手元の Windows PC 上の Codex 作業へ戻るためのツールです。

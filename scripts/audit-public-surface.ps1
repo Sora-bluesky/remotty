@@ -40,7 +40,9 @@ $forbiddenTracked = @(
     'tasks/backlog.yaml',
     'tasks/roadmap-title-ja.psd1',
     '.github/release-doc-reviews',
-    'docs/project/ROADMAP.md'
+    'docs/project/ROADMAP.md',
+    'docs/development.md',
+    'docs/development.ja.md'
 )
 
 foreach ($path in $requiredTracked) {
@@ -66,7 +68,9 @@ $forbiddenPresent = @(
     'tasks/roadmap-title-ja.psd1',
     'tasks/ROADMAP.md',
     '.github/release-doc-reviews',
-    'docs/project/ROADMAP.md'
+    'docs/project/ROADMAP.md',
+    'docs/development.md',
+    'docs/development.ja.md'
 )
 
 foreach ($path in $forbiddenPresent) {
@@ -110,6 +114,26 @@ function Assert-FileContains {
     }
 }
 
+function Test-FileContains {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Needle
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $false
+    }
+
+    return (Get-Content -LiteralPath $Path -Raw).Contains($Needle)
+}
+
+$isRemottyRepo = (Test-FileContains -Path 'package.json' -Needle '"name": "remotty"') -or
+    (Test-FileContains -Path 'Cargo.toml' -Needle 'name = "remotty"')
+
+if ($isRemottyRepo) {
 Assert-FileContains -Path 'README.md' -Needle 'Codex thread'
 Assert-FileContains -Path 'README.md' -Needle 'Telegram Quickstart'
 Assert-FileContains -Path 'README.md' -Needle 'Advanced CLI Mode'
@@ -120,6 +144,15 @@ Assert-FileContains -Path 'README.ja.md' -Needle 'Telegram クイックスター
 Assert-FileContains -Path 'README.ja.md' -Needle '高度な CLI モード'
 Assert-FileContains -Path 'README.ja.md' -Needle '候補から `remotty`'
 Assert-FileContains -Path 'README.ja.md' -Needle 'Codex App のチャット欄には貼らないでください'
+
+foreach ($readmePath in @('README.md', 'README.ja.md')) {
+    if (Test-Path -LiteralPath $readmePath) {
+        $readmeContent = Get-Content -LiteralPath $readmePath -Raw
+        if ($readmeContent.Contains('docs/development')) {
+            $failures.Add("$readmePath must not link internal development docs.") | Out-Null
+        }
+    }
+}
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessions <thread_id>'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Register this project with remotty'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex CLI users run'
@@ -201,6 +234,7 @@ if (Test-Path -LiteralPath 'docs/telegram-quickstart.ja.md') {
         $quickstartJa.Contains('.agents/plugins/marketplace.json')) {
         $failures.Add('Japanese Telegram quickstart must not use bridge.toml workspace editing in the main path.') | Out-Null
     }
+}
 }
 
 if ($failures.Count -gt 0) {

@@ -102,7 +102,6 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     let readme = std::fs::read_to_string(repo_root().join("README.md"))?;
     let quickstart =
         std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.md"))?;
-    let development_doc = std::fs::read_to_string(repo_root().join("docs").join("development.md"))?;
 
     assert!(package.contains(r#""postinstall": "node npm/install.js""#));
     assert!(
@@ -138,8 +137,9 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(readme.contains("Advanced CLI Mode"));
     assert!(quickstart.contains("Register this project with remotty"));
     assert!(!readme.contains("releases/latest/download/remotty.tgz"));
-    assert!(development_doc.contains("NPM_TOKEN"));
-    assert!(development_doc.contains("npm publish .\\release\\remotty.tgz"));
+    assert!(!readme.contains("docs/development.md"));
+    assert!(!package.contains("docs/development.md"));
+    assert!(!package.contains("docs/development.ja.md"));
 
     Ok(())
 }
@@ -160,6 +160,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(readme_ja.contains("Codex スレッド"));
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
+    assert!(!readme_ja.contains("docs/development.ja.md"));
     assert!(quickstart.contains("/remotty-sessions <thread_id>"));
     assert!(quickstart.contains("Register this project with remotty"));
     assert!(quickstart.contains("Codex CLI users run"));
@@ -228,6 +229,50 @@ fn public_surface_audit_script_succeeds_for_tracked_repo_state() -> Result<()> {
     assert!(
         output.status.success(),
         "audit-public-surface failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Ok(())
+}
+
+#[test]
+fn public_surface_audit_allows_minimal_internal_fixture_without_public_docs() -> Result<()> {
+    let repo = tempdir()?;
+    initialize_git_repo(repo.path())?;
+    let script_path = repo.path().join("audit-public-surface.ps1");
+    std::fs::copy(
+        repo_root().join("scripts").join("audit-public-surface.ps1"),
+        &script_path,
+    )?;
+    std::fs::write(repo.path().join("package.json"), r#"{ "name": "fixture" }"#)?;
+    git_add(repo.path(), "package.json")?;
+    std::fs::create_dir_all(repo.path().join("scripts"))?;
+    for script in [
+        "audit-doc-terminology.ps1",
+        "audit-secret-surface.ps1",
+        "planning-paths.ps1",
+        "setup-planning.ps1",
+        "sync-roadmap.ps1",
+        "validate-planning.ps1",
+    ] {
+        std::fs::copy(
+            repo_root().join("scripts").join(script),
+            repo.path().join("scripts").join(script),
+        )?;
+        git_add(repo.path(), &format!("scripts/{script}"))?;
+    }
+
+    let output = Command::new(powershell())
+        .arg("-NoProfile")
+        .arg("-File")
+        .arg(&script_path)
+        .current_dir(repo.path())
+        .output()
+        .with_context(|| format!("failed to run {}", script_path.display()))?;
+
+    assert!(
+        output.status.success(),
+        "audit-public-surface should allow fixtures without public docs: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -436,6 +481,8 @@ fn live_planning_files_and_task_contents_stay_untracked() -> Result<()> {
     assert!(!tracked.contains("tasks/roadmap-title-ja.psd1"));
     assert!(!tracked.contains(".github/release-doc-reviews/"));
     assert!(!tracked.contains("docs/project/ROADMAP.md"));
+    assert!(!tracked.contains("docs/development.md"));
+    assert!(!tracked.contains("docs/development.ja.md"));
 
     Ok(())
 }
