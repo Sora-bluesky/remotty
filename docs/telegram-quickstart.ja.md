@@ -258,7 +258,7 @@ Telegram から続けたいスレッドを選びます。
 Telegram で次を送ります。
 
 ```text
-Summarize the current thread and suggest the next step.
+このスレッドの内容を要約して、次にやることを提案してください。
 ```
 
 `remotty` は選択済みスレッドへ文を渡します。
