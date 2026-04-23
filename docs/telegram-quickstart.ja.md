@@ -234,7 +234,7 @@ Codex App では、`@remotty` を選びます。
 次のように依頼します。
 
 ```text
-Codex スレッドを一覧して
+Codex スレッドを表示して
 ```
 
 Codex CLI では、次を実行します。

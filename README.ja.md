@@ -79,7 +79,7 @@ Telegram bot token を保存して
 Telegram に表示された pairing code でペアリングして
 Telegram の allowlist を有効化して
 状態を確認して
-Codex スレッドを一覧して
+Codex スレッドを表示して
 ```
 
 bot token は、`remotty` が開く PowerShell にだけ入力します。
