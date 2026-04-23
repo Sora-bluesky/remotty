@@ -324,6 +324,15 @@ The decision is returned to the same Codex turn.
 >
 > A. Yes. The bot token is stored for your Windows user. Project registration and Telegram chat bindings are separate.
 
+> Q. What happens if I send another message while Codex is still working?
+>
+> A. Text messages are queued if the bridge still has the running turn in view.
+> Codex receives the queued text after the current step is ready for follow-up input.
+> Attachments are not queued while a turn is running.
+> Send attachments after the current turn finishes.
+> If the bridge was restarted, the old turn may no longer be active.
+> In that case, `remotty` recovers and starts a new request in the selected thread.
+
 > Q. What if the token may have leaked?
 >
 > A. Regenerate it with `@BotFather`. Then ask the `remotty` plugin to save the new token.
