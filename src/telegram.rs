@@ -867,8 +867,11 @@ fn render_attachment_summary(attachments: &[TelegramAttachment]) -> String {
 }
 
 pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
-    let mut parts = text.trim().split_whitespace();
-    let command = parse_control_command_name(parts.next()?)?;
+    let text = text.trim();
+    let command_token = text.split_whitespace().next()?;
+    let command = parse_control_command_name(command_token)?;
+    let rest = text[command_token.len()..].trim();
+    let mut parts = rest.split_whitespace();
 
     if command.eq_ignore_ascii_case("help") {
         return parts
@@ -913,12 +916,8 @@ pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
     }
     if command.eq_ignore_ascii_case("sessions") || command.eq_ignore_ascii_case("remotty-sessions")
     {
-        let thread_id = parts.next().map(|value| value.trim().to_owned());
-        if parts.next().is_some() {
-            return None;
-        }
         return Some(TelegramControlCommand::Sessions {
-            thread_id: thread_id.filter(|value| !value.is_empty()),
+            thread_id: (!rest.is_empty()).then_some(rest.to_owned()),
         });
     }
     if command.eq_ignore_ascii_case("mode") {
@@ -1488,6 +1487,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_sessions_command_with_title() {
+        assert_eq!(
+            parse_control_command("/remotty-sessions Start workspace session"),
+            Some(TelegramControlCommand::Sessions {
+                thread_id: Some("Start workspace session".to_owned())
+            })
+        );
+    }
+
+    #[test]
+    fn parses_sessions_command_preserves_inner_title_whitespace() {
+        assert_eq!(
+            parse_control_command("/remotty-sessions Start  workspace  session"),
+            Some(TelegramControlCommand::Sessions {
+                thread_id: Some("Start  workspace  session".to_owned())
+            })
+        );
+    }
+
+    #[test]
     fn parses_stop_command() {
         assert_eq!(
             TelegramControlCommand::parse("/stop"),
@@ -1579,7 +1598,6 @@ mod tests {
         assert_eq!(parse_control_command("/approve req extra"), None);
         assert_eq!(parse_control_command("/deny req extra"), None);
         assert_eq!(parse_control_command("/workspace docs extra"), None);
-        assert_eq!(parse_control_command("/remotty-sessions a b"), None);
     }
 
     #[test]

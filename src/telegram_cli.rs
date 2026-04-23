@@ -235,7 +235,7 @@ pub async fn live_env_check(config_path: impl AsRef<Path>) -> Result<String> {
 pub async fn sessions(config_path: impl AsRef<Path>, filter: Option<&str>) -> Result<String> {
     let config = Config::load(config_path.as_ref())?;
     let runner = CodexRunner::new(config.codex.clone());
-    let threads = runner.list_threads(10, filter).await?;
+    let threads = runner.list_threads(25, filter).await?;
     Ok(format_sessions_summary(&threads))
 }
 
@@ -247,11 +247,72 @@ fn format_sessions_summary(threads: &[CodexThreadSummary]) -> String {
     for thread in threads.iter().take(10) {
         let title = thread.title.as_deref().unwrap_or("untitled");
         let cwd = thread.cwd.as_deref().unwrap_or("cwd unavailable");
-        lines.push(format!("- `{}` {title}", thread.thread_id));
-        lines.push(format!("  cwd: `{cwd}`"));
+        lines.push(format!("- {title}"));
+        lines.push(format!("  project: `{cwd}`"));
+        lines.push(format!(
+            "  select: `/remotty-sessions {}`",
+            thread_selection_target_for_list(thread, threads)
+        ));
+        lines.push(format!("  ID: `{}`", thread.thread_id));
     }
-    lines.push("Telegram select: `/remotty-sessions <thread_id>`".to_owned());
+    lines.push("Telegram select: `/remotty-sessions <title or ID>`".to_owned());
     lines.join("\n")
+}
+
+fn thread_selection_target_for_list<'a>(
+    thread: &'a CodexThreadSummary,
+    threads: &[CodexThreadSummary],
+) -> &'a str {
+    if title_is_duplicated(thread, threads) {
+        return &thread.thread_id;
+    }
+    if title_conflicts_with_id_prefix(thread, threads) {
+        return &thread.thread_id;
+    }
+    thread
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .unwrap_or(&thread.thread_id)
+}
+
+fn title_conflicts_with_id_prefix(
+    thread: &CodexThreadSummary,
+    threads: &[CodexThreadSummary],
+) -> bool {
+    let Some(title) = normalized_non_empty_title(thread) else {
+        return false;
+    };
+    threads
+        .iter()
+        .any(|candidate| normalize_thread_lookup(&candidate.thread_id).starts_with(&title))
+}
+
+fn title_is_duplicated(thread: &CodexThreadSummary, threads: &[CodexThreadSummary]) -> bool {
+    let Some(title) = normalized_non_empty_title(thread) else {
+        return false;
+    };
+    threads
+        .iter()
+        .filter_map(normalized_non_empty_title)
+        .filter(|other| other == &title)
+        .take(2)
+        .count()
+        > 1
+}
+
+fn normalized_non_empty_title(thread: &CodexThreadSummary) -> Option<String> {
+    thread
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(normalize_thread_lookup)
+}
+
+fn normalize_thread_lookup(value: &str) -> String {
+    value.trim().to_lowercase()
 }
 
 fn resolve_secret_ref(config_path: &Path) -> Result<String> {

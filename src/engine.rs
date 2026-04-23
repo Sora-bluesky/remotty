@@ -800,13 +800,17 @@ async fn handle_sessions_command(
     thread_id: Option<&str>,
 ) -> Result<String> {
     let Some(thread_id) = thread_id.map(str::trim).filter(|value| !value.is_empty()) else {
-        let threads = codex.list_threads(10, None).await?;
+        let threads = codex.list_threads(25, None).await?;
         return Ok(format_sessions_message(&threads));
     };
 
-    let threads = codex.list_threads(25, Some(thread_id)).await?;
-    let Some(selected) = find_selected_thread(&threads, thread_id) else {
-        return Ok(format_thread_not_found_message(thread_id));
+    let mut threads = codex.list_threads(25, None).await?;
+    merge_unique_threads(&mut threads, codex.list_threads(25, Some(thread_id)).await?);
+    let matches = find_selected_threads(&threads, thread_id);
+    let selected = match matches.as_slice() {
+        [selected] => *selected,
+        [] => return Ok(format_thread_not_found_message(thread_id)),
+        ambiguous => return Ok(format_ambiguous_thread_message(thread_id, ambiguous)),
     };
     let workspace = resolve_workspace(config, lane)?;
     store.upsert_codex_thread_binding(NewCodexThreadBinding {
@@ -819,24 +823,97 @@ async fn handle_sessions_command(
         model: selected.model.clone(),
         codex_updated_at: selected.updated_at.clone(),
     })?;
+    let title = selected.title.as_deref().unwrap_or("タイトルなし");
     Ok(format!(
-        "この会話を Codex スレッド `{}` に対応付けました。\n次の入力から、このスレッドへ戻せるようになります。",
+        "この会話を Codex スレッド `{title}` に対応付けました。\n技術 ID: `{}`\n次の入力から、このスレッドへ戻せるようになります。",
         selected.thread_id
     ))
 }
 
-fn find_selected_thread<'a>(
+fn find_selected_threads<'a>(
     threads: &'a [CodexThreadSummary],
-    thread_id: &str,
-) -> Option<&'a CodexThreadSummary> {
+    query: &str,
+) -> Vec<&'a CodexThreadSummary> {
+    let exact_id = threads
+        .iter()
+        .filter(|thread| thread.thread_id.eq_ignore_ascii_case(query))
+        .collect::<Vec<_>>();
+    if !exact_id.is_empty() {
+        return exact_id;
+    }
+
+    let exact_title = threads
+        .iter()
+        .filter(|thread| title_eq(thread, query))
+        .collect::<Vec<_>>();
+    let prefix_id = threads
+        .iter()
+        .filter(|thread| id_prefix_eq(thread, query))
+        .collect::<Vec<_>>();
+
+    if !exact_title.is_empty() {
+        let mut matches = exact_title;
+        for thread in prefix_id {
+            if !matches
+                .iter()
+                .any(|existing| existing.thread_id == thread.thread_id)
+            {
+                matches.push(thread);
+            }
+        }
+        return matches;
+    }
+
+    if !prefix_id.is_empty() {
+        return prefix_id;
+    }
+
     threads
         .iter()
-        .find(|thread| thread.thread_id.eq_ignore_ascii_case(thread_id))
-        .or_else(|| {
-            threads
-                .iter()
-                .find(|thread| thread.thread_id.starts_with(thread_id))
-        })
+        .filter(|thread| title_contains(thread, query))
+        .collect::<Vec<_>>()
+}
+
+fn id_prefix_eq(thread: &CodexThreadSummary, query: &str) -> bool {
+    normalize_thread_lookup(&thread.thread_id).starts_with(&normalize_thread_lookup(query))
+}
+
+fn merge_unique_threads(
+    threads: &mut Vec<CodexThreadSummary>,
+    extra_threads: Vec<CodexThreadSummary>,
+) {
+    for thread in extra_threads {
+        if !threads
+            .iter()
+            .any(|existing| existing.thread_id == thread.thread_id)
+        {
+            threads.push(thread);
+        }
+    }
+}
+
+fn normalize_thread_lookup(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn title_eq(thread: &CodexThreadSummary, query: &str) -> bool {
+    thread
+        .title
+        .as_deref()
+        .map(|title| normalize_thread_lookup(title) == normalize_thread_lookup(query))
+        .unwrap_or(false)
+}
+
+fn title_contains(thread: &CodexThreadSummary, query: &str) -> bool {
+    let query = normalize_thread_lookup(query);
+    if query.is_empty() {
+        return false;
+    }
+    thread
+        .title
+        .as_deref()
+        .map(|title| normalize_thread_lookup(title).contains(&query))
+        .unwrap_or(false)
 }
 
 async fn handle_approval_decision_message(
@@ -1526,7 +1603,7 @@ fn format_help_message() -> String {
         "/workspace",
         "/workspace <id>",
         "/remotty-sessions",
-        "/remotty-sessions <thread_id>",
+        "/remotty-sessions <title or ID>",
         "/mode await_reply",
         "/mode completion_checks",
         "/mode infinite",
@@ -1600,16 +1677,96 @@ fn format_sessions_message(threads: &[CodexThreadSummary]) -> String {
     let mut lines = vec!["保存済みの Codex スレッド:".to_owned()];
     for thread in threads.iter().take(10) {
         let title = thread.title.as_deref().unwrap_or("タイトルなし");
-        lines.push(format!("- `{}` {}", thread.thread_id, title));
+        lines.push(format!("- {title}"));
+        if let Some(cwd) = thread.cwd.as_deref() {
+            lines.push(format!("  project: `{cwd}`"));
+        }
+        lines.push(format!(
+            "  select: `/remotty-sessions {}`",
+            thread_selection_target_for_list(thread, threads)
+        ));
+        lines.push(format!("  ID: `{}`", thread.thread_id));
     }
-    lines.push("選択: `/remotty-sessions <thread_id>`".to_owned());
+    lines.push("選択: `/remotty-sessions <title or ID>`".to_owned());
     lines.join("\n")
 }
 
 fn format_thread_not_found_message(thread_id: &str) -> String {
     format!(
-        "Codex スレッド `{thread_id}` は見つかりませんでした。\n`/remotty-sessions` で最新の一覧を確認し、表示された ID を指定してください。"
+        "Codex スレッド `{thread_id}` は見つかりませんでした。\n`/remotty-sessions` で最新の一覧を確認し、表示された名前を指定してください。"
     )
+}
+
+fn format_ambiguous_thread_message(query: &str, threads: &[&CodexThreadSummary]) -> String {
+    let mut lines = vec![format!(
+        "`{query}` に一致する Codex スレッドが複数あります。"
+    )];
+    for thread in threads.iter().take(10) {
+        let title = thread.title.as_deref().unwrap_or("タイトルなし");
+        lines.push(format!("- {title}"));
+        if let Some(cwd) = thread.cwd.as_deref() {
+            lines.push(format!("  project: `{cwd}`"));
+        }
+        lines.push(format!(
+            "  select: `/remotty-sessions {}`",
+            thread.thread_id
+        ));
+        lines.push(format!("  ID: `{}`", thread.thread_id));
+    }
+    lines.push("一意にするため、より長い名前か ID を指定してください。".to_owned());
+    lines.join("\n")
+}
+
+fn thread_selection_target_for_list<'a>(
+    thread: &'a CodexThreadSummary,
+    threads: &[CodexThreadSummary],
+) -> &'a str {
+    if title_is_duplicated(thread, threads) {
+        return &thread.thread_id;
+    }
+    if title_conflicts_with_id_prefix(thread, threads) {
+        return &thread.thread_id;
+    }
+    thread
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .unwrap_or(&thread.thread_id)
+}
+
+fn title_conflicts_with_id_prefix(
+    thread: &CodexThreadSummary,
+    threads: &[CodexThreadSummary],
+) -> bool {
+    let Some(title) = normalized_non_empty_title(thread) else {
+        return false;
+    };
+    threads
+        .iter()
+        .any(|candidate| normalize_thread_lookup(&candidate.thread_id).starts_with(&title))
+}
+
+fn title_is_duplicated(thread: &CodexThreadSummary, threads: &[CodexThreadSummary]) -> bool {
+    let Some(title) = normalized_non_empty_title(thread) else {
+        return false;
+    };
+    threads
+        .iter()
+        .filter_map(normalized_non_empty_title)
+        .filter(|other| other == &title)
+        .take(2)
+        .count()
+        > 1
+}
+
+fn normalized_non_empty_title(thread: &CodexThreadSummary) -> Option<String> {
+    thread
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(normalize_thread_lookup)
 }
 
 async fn persist_approval_requests(
@@ -3016,17 +3173,101 @@ mod tests {
 
     #[test]
     fn format_sessions_message_includes_selection_command() {
-        let message = format_sessions_message(&[CodexThreadSummary {
-            thread_id: "thread-1".to_owned(),
-            title: Some("Fix tests".to_owned()),
-            cwd: None,
-            model: None,
-            updated_at: None,
-        }]);
+        let message = format_sessions_message(&[
+            CodexThreadSummary {
+                thread_id: "thread-1".to_owned(),
+                title: Some("Fix tests".to_owned()),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+            CodexThreadSummary {
+                thread_id: "thread-2".to_owned(),
+                title: None,
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+        ]);
 
         assert!(message.contains("thread-1"));
         assert!(message.contains("Fix tests"));
-        assert!(message.contains("/remotty-sessions <thread_id>"));
+        assert!(message.contains("/remotty-sessions Fix tests"));
+        assert!(message.contains("/remotty-sessions thread-2"));
+        assert!(message.contains("/remotty-sessions <title or ID>"));
+    }
+
+    #[test]
+    fn format_sessions_message_uses_id_for_duplicate_titles() {
+        let message = format_sessions_message(&[
+            CodexThreadSummary {
+                thread_id: "thread-1".to_owned(),
+                title: Some("Start workspace session".to_owned()),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+            CodexThreadSummary {
+                thread_id: "thread-2".to_owned(),
+                title: Some("start workspace session".to_owned()),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+        ]);
+
+        assert!(message.contains("/remotty-sessions thread-1"));
+        assert!(message.contains("/remotty-sessions thread-2"));
+    }
+
+    #[test]
+    fn format_sessions_message_uses_id_when_title_matches_id_prefix() {
+        let message = format_sessions_message(&[
+            CodexThreadSummary {
+                thread_id: "thread-abcdef".to_owned(),
+                title: Some("Other work".to_owned()),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+            CodexThreadSummary {
+                thread_id: "thread-title".to_owned(),
+                title: Some("thread-abc".to_owned()),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            },
+        ]);
+
+        assert!(message.contains("/remotty-sessions thread-title"));
+        assert!(!message.contains("select: `/remotty-sessions thread-abc`"));
+    }
+
+    #[test]
+    fn format_sessions_message_uses_id_for_hidden_duplicate_titles() {
+        let mut threads = (0..10)
+            .map(|index| CodexThreadSummary {
+                thread_id: format!("thread-{index}"),
+                title: Some(format!("Thread {index}")),
+                cwd: None,
+                model: None,
+                updated_at: None,
+            })
+            .collect::<Vec<_>>();
+        threads[0].title = Some("Start workspace session".to_owned());
+        threads.push(CodexThreadSummary {
+            thread_id: "thread-hidden".to_owned(),
+            title: Some("start workspace session".to_owned()),
+            cwd: None,
+            model: None,
+            updated_at: None,
+        });
+
+        let message = format_sessions_message(&threads);
+
+        assert!(message.contains("select: `/remotty-sessions thread-0`"));
+        assert!(!message.contains("select: `/remotty-sessions Start workspace session`"));
+        assert!(!message.contains("thread-hidden"));
     }
 
     #[test]
@@ -3039,10 +3280,141 @@ mod tests {
             updated_at: None,
         }];
 
-        let selected =
-            find_selected_thread(&threads, "thread-abc").expect("prefix should select the thread");
+        let matches = find_selected_threads(&threads, "thread-abc");
 
-        assert_eq!(selected.thread_id, "thread-abcdef");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].thread_id, "thread-abcdef");
+    }
+
+    #[test]
+    fn find_selected_thread_accepts_case_insensitive_prefix_match() {
+        let threads = vec![CodexThreadSummary {
+            thread_id: "Thread-ABCDEF".to_owned(),
+            title: None,
+            cwd: None,
+            model: None,
+            updated_at: None,
+        }];
+
+        let matches = find_selected_threads(&threads, "thread-abc");
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].thread_id, "Thread-ABCDEF");
+    }
+
+    #[test]
+    fn find_selected_thread_accepts_title_match() {
+        let threads = vec![CodexThreadSummary {
+            thread_id: "thread-1".to_owned(),
+            title: Some("Start workspace session".to_owned()),
+            cwd: Some("C:/workspace".to_owned()),
+            model: None,
+            updated_at: None,
+        }];
+
+        let matches = find_selected_threads(&threads, "Start workspace session");
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].thread_id, "thread-1");
+    }
+
+    #[test]
+    fn find_selected_thread_returns_ambiguous_title_and_id_prefix_matches() {
+        let threads = vec![
+            CodexThreadSummary {
+                thread_id: "thread-title".to_owned(),
+                title: Some("thread-abc".to_owned()),
+                cwd: Some("C:/workspace/title".to_owned()),
+                model: None,
+                updated_at: None,
+            },
+            CodexThreadSummary {
+                thread_id: "thread-abcdef".to_owned(),
+                title: Some("Other work".to_owned()),
+                cwd: Some("C:/workspace/prefix".to_owned()),
+                model: None,
+                updated_at: None,
+            },
+        ];
+
+        let matches = find_selected_threads(&threads, "thread-abc");
+
+        assert_eq!(matches.len(), 2);
+        assert!(
+            matches
+                .iter()
+                .any(|thread| thread.thread_id == "thread-title")
+        );
+        assert!(
+            matches
+                .iter()
+                .any(|thread| thread.thread_id == "thread-abcdef")
+        );
+    }
+
+    #[test]
+    fn find_selected_thread_returns_ambiguous_title_matches() {
+        let threads = vec![
+            CodexThreadSummary {
+                thread_id: "thread-1".to_owned(),
+                title: Some("Start workspace session".to_owned()),
+                cwd: Some("C:/workspace/one".to_owned()),
+                model: None,
+                updated_at: None,
+            },
+            CodexThreadSummary {
+                thread_id: "thread-2".to_owned(),
+                title: Some("Start workspace session".to_owned()),
+                cwd: Some("C:/workspace/two".to_owned()),
+                model: None,
+                updated_at: None,
+            },
+        ];
+
+        let matches = find_selected_threads(&threads, "Start workspace session");
+
+        assert_eq!(matches.len(), 2);
+        let message = format_ambiguous_thread_message("Start workspace session", &matches);
+        assert!(message.contains("複数"));
+        assert!(message.contains("thread-1"));
+        assert!(message.contains("thread-2"));
+        assert!(message.contains("/remotty-sessions thread-1"));
+        assert!(message.contains("/remotty-sessions thread-2"));
+    }
+
+    #[test]
+    fn merge_unique_threads_keeps_filtered_duplicate_candidates() {
+        let mut threads = vec![CodexThreadSummary {
+            thread_id: "thread-1".to_owned(),
+            title: Some("Start workspace session".to_owned()),
+            cwd: None,
+            model: None,
+            updated_at: None,
+        }];
+        merge_unique_threads(
+            &mut threads,
+            vec![
+                CodexThreadSummary {
+                    thread_id: "thread-1".to_owned(),
+                    title: Some("Start workspace session".to_owned()),
+                    cwd: None,
+                    model: None,
+                    updated_at: None,
+                },
+                CodexThreadSummary {
+                    thread_id: "thread-2".to_owned(),
+                    title: Some("Start workspace session".to_owned()),
+                    cwd: None,
+                    model: None,
+                    updated_at: None,
+                },
+            ],
+        );
+
+        let matches = find_selected_threads(&threads, "Start workspace session");
+
+        assert_eq!(threads.len(), 2);
+        assert_eq!(matches.len(), 2);
     }
 
     #[test]

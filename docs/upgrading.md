@@ -19,7 +19,7 @@ This lets Telegram continue the Codex thread you select with:
 
 ```text
 /remotty-sessions
-/remotty-sessions <thread_id>
+/remotty-sessions <thread title or ID>
 ```
 
 ## If Your Config Uses `exec`

@@ -20,7 +20,7 @@ transport = "app_server"
 
 ```text
 /remotty-sessions
-/remotty-sessions <thread_id>
+/remotty-sessions <スレッド名または ID>
 ```
 
 ## 設定が `exec` の場合

@@ -247,9 +247,18 @@ remotty telegram sessions --config $configPath
 Telegram から続けたいスレッドを選びます。
 対象の Telegram チャットで次を送ります。
 
+たとえば、スレッド名が `Start workspace session` の場合です。
+
 ```text
-/remotty-sessions <thread_id>
+/remotty-sessions Start workspace session
 ```
+
+`/remotty-sessions` の後ろは、まとめて1つの名前として扱います。
+引用符は不要です。
+大文字と小文字は区別しません。
+`remotty` は `ID`、完全な名前、`ID` の先頭、名前の一部の順に探します。
+複数のスレッドが一致した場合は、表示された `ID` を使います。
+名前が別スレッドの `ID` に見える場合も、`ID` を指定し直してください。
 
 対応付けは `%APPDATA%\remotty` へ保存します。
 プロジェクトのリポジトリには書き込みません。

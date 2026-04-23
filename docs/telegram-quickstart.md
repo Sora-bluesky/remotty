@@ -250,9 +250,18 @@ remotty telegram sessions --config $configPath
 Choose the thread you want Telegram to continue.
 Then send this in the target Telegram chat:
 
+For example, if the thread title is `Start workspace session`:
+
 ```text
-/remotty-sessions <thread_id>
+/remotty-sessions Start workspace session
 ```
+
+Everything after `/remotty-sessions` is treated as one title.
+No quotes are needed.
+Matching is case-insensitive.
+`remotty` tries exact `ID`, exact title, `ID` prefix, then a title substring match.
+If more than one thread matches, use the shown `ID`.
+If a title also looks like another thread's `ID`, `remotty` asks you to choose by `ID`.
 
 This binding is stored under `%APPDATA%\remotty`.
 It is not written into your project repository.

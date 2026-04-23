@@ -100,10 +100,15 @@ Run these in Telegram:
 /stop
 /approve <request_id>
 /deny <request_id>
-/remotty-sessions <thread_id>
+/remotty-sessions <thread title or ID>
 /workspace
 /workspace <id>
 ```
+
+Thread titles may include spaces.
+No quotes are needed.
+If more than one thread matches, use the shown `ID`.
+If a title also looks like another thread's `ID`, use the shown `ID`.
 
 ## Security
 
