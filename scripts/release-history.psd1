@@ -304,5 +304,16 @@
                 "Reworked the Telegram quickstart around opening the target project before configuring remotty."
             )
         }
+        @{
+            Version = "0.2.8"
+            Commit = "ea3858e98e0b0cca88e5a3ee59d6162b2aad3b8d"
+            Title = "Plugin-first setup documentation"
+            Notes = @(
+                "Added Codex plugin setup guidance for app and CLI users."
+                "Clarified which setup steps are one-time, per project, and per Telegram chat."
+                "Added quickstart screenshots and Q&A sections for security and troubleshooting."
+                "Removed internal development documents from the public package surface."
+            )
+        }
     )
 }
