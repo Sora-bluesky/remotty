@@ -96,10 +96,15 @@ Telegram で使います。
 /stop
 /approve <request_id>
 /deny <request_id>
-/remotty-sessions <thread_id>
+/remotty-sessions <スレッド名または ID>
 /workspace
 /workspace <id>
 ```
+
+スレッド名に空白があっても、そのまま送れます。
+引用符は不要です。
+同じ名前が複数ある場合は、表示された `ID` を使います。
+名前が別スレッドの `ID` に見える場合も、表示された `ID` を使います。
 
 ## 安全な情報の扱い
 

@@ -153,7 +153,12 @@ foreach ($readmePath in @('README.md', 'README.ja.md')) {
         }
     }
 }
-Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessions <thread_id>'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle '/remotty-sessions Start workspace session'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'if the thread title is `Start workspace session`'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'No quotes are needed.'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Matching is case-insensitive.'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'exact `ID`, exact title, `ID` prefix, then a title substring match'
+Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'If more than one thread matches, use the shown `ID`.'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Register this project with remotty'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Codex CLI users run'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'remotty config workspace upsert'
@@ -176,7 +181,12 @@ Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Windows protect
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'paired senders'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Do not paste the token into Codex App chat.'
 Assert-FileContains -Path 'docs/telegram-quickstart.md' -Needle 'Regenerate it with `@BotFather`'
-Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-sessions <thread_id>'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '/remotty-sessions Start workspace session'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'スレッド名が `Start workspace session` の場合'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '引用符は不要です'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '大文字と小文字は区別しません'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '`ID`、完全な名前、`ID` の先頭、名前の一部'
+Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle '複数のスレッドが一致した場合は、表示された `ID` を使います'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'このプロジェクトを remotty に登録して'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'Codex CLI では'
 Assert-FileContains -Path 'docs/telegram-quickstart.ja.md' -Needle 'remotty config workspace upsert'

@@ -174,7 +174,14 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(!readme_ja.contains("docs/development.ja.md"));
-    assert!(quickstart.contains("/remotty-sessions <thread_id>"));
+    assert!(quickstart.contains("/remotty-sessions Start workspace session"));
+    assert!(quickstart.contains("if the thread title is `Start workspace session`"));
+    assert!(quickstart.contains("No quotes are needed."));
+    assert!(quickstart.contains("Matching is case-insensitive."));
+    assert!(
+        quickstart.contains("exact `ID`, exact title, `ID` prefix, then a title substring match")
+    );
+    assert!(quickstart.contains("If more than one thread matches, use the shown `ID`."));
     assert!(quickstart.contains("Register this project with remotty"));
     assert!(quickstart.contains("Codex CLI users run"));
     assert!(quickstart.contains("remotty config workspace upsert"));
@@ -200,7 +207,12 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(!quickstart.contains("writable_roots"));
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
-    assert!(quickstart_ja.contains("/remotty-sessions <thread_id>"));
+    assert!(quickstart_ja.contains("/remotty-sessions Start workspace session"));
+    assert!(quickstart_ja.contains("スレッド名が `Start workspace session` の場合"));
+    assert!(quickstart_ja.contains("引用符は不要です"));
+    assert!(quickstart_ja.contains("大文字と小文字は区別しません"));
+    assert!(quickstart_ja.contains("`ID`、完全な名前、`ID` の先頭、名前の一部"));
+    assert!(quickstart_ja.contains("複数のスレッドが一致した場合は、表示された `ID` を使います"));
     assert!(quickstart_ja.contains("このプロジェクトを remotty に登録して"));
     assert!(quickstart_ja.contains("Codex CLI では"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
