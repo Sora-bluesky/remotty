@@ -167,6 +167,8 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Select `remotty` from the suggestions"));
     assert!(quickstart.contains("Windows protected storage"));
+    assert!(quickstart.contains(r"%LOCALAPPDATA%\remotty\secrets"));
+    assert!(quickstart.contains("remotty-telegram-bot.bin"));
     assert!(quickstart.contains("remotty local plugins"));
     assert!(quickstart.contains("one-time setup"));
     assert!(quickstart.contains("How Often Each Step Is Needed"));
@@ -190,6 +192,8 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
     assert!(quickstart_ja.contains("候補から `remotty` を選びます"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
+    assert!(quickstart_ja.contains(r"%LOCALAPPDATA%\remotty\secrets"));
+    assert!(quickstart_ja.contains("remotty-telegram-bot.bin"));
     assert!(quickstart_ja.contains("remotty local plugins"));
     assert!(quickstart_ja.contains("初回だけ"));
     assert!(quickstart_ja.contains("手順の分け方"));

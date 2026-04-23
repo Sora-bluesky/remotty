@@ -57,6 +57,20 @@ selection, and a first Telegram test message.
 Want to try the local loop before making a Telegram bot?
 Use the [Fakechat Demo](docs/fakechat-demo.md).
 
+## Update
+
+Run this in a normal user PowerShell when you want the latest published
+`remotty` package:
+
+```powershell
+npm install -g remotty
+```
+
+Then open the Codex App Plugins screen.
+If `remotty` shows an update button, press it.
+If no update is shown, remove the plugin and install it again.
+Choose `remotty local plugins` as the plugin source in that screen.
+
 ## Main Commands
 
 If you use Codex App, type `@` in the chat box.

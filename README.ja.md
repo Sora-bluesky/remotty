@@ -54,6 +54,19 @@ Telegram bot へメッセージを送ります。
 Telegram bot を作る前に試す場合は、
 [Fakechat デモ](docs/fakechat-demo.ja.md) を使えます。
 
+## 更新方法
+
+公開済みの最新版へ更新する時は、通常の PowerShell で実行します。
+
+```powershell
+npm install -g remotty
+```
+
+その後、Codex App の Plugins 画面を開きます。
+`remotty` に更新ボタンがあれば押します。
+出ない場合は、ローカルプラグインを入れ直してください。
+画面内のプラグイン元は `remotty local plugins` です。
+
 ## 主なコマンド
 
 Codex App では、チャット欄で `@` を入力します。

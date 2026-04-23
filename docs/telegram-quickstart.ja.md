@@ -43,6 +43,8 @@ Telegram へ入力する場合は、この手順内で明示します。
 
 bot token は、プロジェクトのリポジトリへ保存しません。
 Windows の保護領域へ保存します。
+保護されたファイルは `%LOCALAPPDATA%\remotty\secrets` 配下です。
+既定のファイル名は `remotty-telegram-bot.bin` です。
 `remotty` の設定と状態は `%APPDATA%\remotty` 配下へ保存します。
 
 プロジェクト登録は、対象プロジェクトを開いた状態で依頼します。
@@ -168,6 +170,8 @@ remotty telegram configure --config $configPath
 
 表示に従って token を貼ります。
 このコマンドは token を再表示せず、Windows の保護領域へ保存します。
+暗号化されたファイルは `%LOCALAPPDATA%\remotty\secrets` 配下です。
+既定のファイル名は `remotty-telegram-bot.bin` です。
 保存先は Windows ユーザーごとの保護領域です。
 プロジェクトを変えても、同じ Windows ユーザーなら同じ保存先を使います。
 
@@ -284,7 +288,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 > Q. bot token はどこへ保存されますか?
 >
-> A. Windows の保護領域へ保存します。プロジェクトのリポジトリ、GitHub、Telegram のチャットへは保存しません。
+> A. Windows の保護領域へ保存します。場所は `%LOCALAPPDATA%\remotty\secrets` 配下です。既定のファイル名は `remotty-telegram-bot.bin` です。プロジェクトのリポジトリ、GitHub、Telegram のチャットへは保存しません。
 
 > Q. bot token は OpenAI や外部サーバへ送られますか?
 >

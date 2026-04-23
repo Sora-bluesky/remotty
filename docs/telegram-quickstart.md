@@ -44,6 +44,8 @@ This guide explicitly says when a command goes to Telegram.
 
 The bot token is not saved in your project repository.
 It is saved in Windows protected storage.
+The protected file lives under `%LOCALAPPDATA%\remotty\secrets`.
+By default, the file name is `remotty-telegram-bot.bin`.
 `remotty` config and runtime state are saved under `%APPDATA%\remotty`.
 
 Register the project while the target project is open.
@@ -170,6 +172,8 @@ remotty telegram configure --config $configPath
 Paste the token when prompted.
 The command stores it in Windows protected storage.
 It does not print the token back.
+The encrypted file is under `%LOCALAPPDATA%\remotty\secrets`.
+The default file name is `remotty-telegram-bot.bin`.
 The storage is tied to your Windows user.
 It is reused even when you work in another project.
 
@@ -284,7 +288,7 @@ The decision is returned to the same Codex turn.
 
 > Q. Where is the bot token stored?
 >
-> A. It is stored in Windows protected storage. It is not stored in your project repository, GitHub, or a Telegram chat.
+> A. It is stored in Windows protected storage under `%LOCALAPPDATA%\remotty\secrets`. The default file name is `remotty-telegram-bot.bin`. It is not stored in your project repository, GitHub, or a Telegram chat.
 
 > Q. Is the bot token sent to OpenAI or another public server?
 >
