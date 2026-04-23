@@ -317,6 +317,25 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 
 ### 接続の Q&A
 
+> Q. 現在の Codex App チャットで `@remotty` が出ません。
+>
+> A. 今のチャットは閉じないでください。
+> PowerShell で、対象プロジェクトへ先に移動します。
+>
+> ```powershell
+> Set-Location C:\path\to\your-project
+> ```
+>
+> その後、次を実行します。
+>
+> ```powershell
+> remotty config workspace upsert --config $configPath --path (Get-Location).Path
+> ```
+>
+> この操作は、プロジェクトのルートにファイルを作りません。
+> 残りの設定も PowerShell で進められます。
+> 後で Codex App に `@remotty` が出たら、そこへ戻れます。
+
 > Q. bot が返信しません。
 >
 > A. まずブリッジが動いているか確認します。Codex App では `@remotty` で状態確認を依頼します。PowerShell では `remotty service status` と `remotty telegram live-env-check --config $configPath` を実行します。webhook 状態が `webhook-configured` なら polling へ戻します。

@@ -118,6 +118,19 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(installer.contains("releases/download"));
     assert!(wrapper.contains("remotty.exe"));
     assert!(plugin_manifest.contains(r#""skills": "./skills/""#));
+    let package_json: serde_json::Value = serde_json::from_str(&package)?;
+    let plugin_json: serde_json::Value = serde_json::from_str(&plugin_manifest)?;
+    let package_version = package_json["version"]
+        .as_str()
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .context("package version must be present")?;
+    let plugin_version = plugin_json["version"]
+        .as_str()
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .context("plugin manifest version must be present")?;
+    assert_eq!(package_version, plugin_version);
     assert!(!plugin_readme.contains("fakechat"));
     assert!(!plugin_readme.contains("/remotty-fakechat-demo"));
     assert!(!plugin_readme.contains("/remotty-smoke"));
@@ -177,6 +190,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("does not create files in the project root"));
     assert!(quickstart.contains("Security Q&A"));
     assert!(quickstart.contains("Connection Q&A"));
+    assert!(quickstart.contains("@remotty` does not appear"));
     assert!(quickstart.contains("Pairing Q&A"));
     assert!(quickstart.contains("Thread Selection Q&A"));
     assert!(quickstart.contains("Windows protected storage"));
@@ -202,6 +216,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("プロジェクトのルートに"));
     assert!(quickstart_ja.contains("安全性の Q&A"));
     assert!(quickstart_ja.contains("接続の Q&A"));
+    assert!(quickstart_ja.contains("`@remotty` が出ません"));
     assert!(quickstart_ja.contains("ペアリングの Q&A"));
     assert!(quickstart_ja.contains("スレッド選択の Q&A"));
     assert!(quickstart_ja.contains("Windows の保護領域"));

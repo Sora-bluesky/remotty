@@ -206,6 +206,22 @@ Assert-FileContains -Path 'plugins/remotty/skills/remotty-configure/SKILL.md' -N
 Assert-FileContains -Path 'plugins/remotty/skills/remotty-start/SKILL.md' -Needle 'remotty service start'
 Assert-FileContains -Path 'plugins/remotty/skills/remotty-status/SKILL.md' -Needle 'remotty telegram policy allowlist'
 
+if (-not (Test-Path -LiteralPath 'package.json')) {
+    $failures.Add("package.json must exist for version audit.") | Out-Null
+} elseif (-not (Test-Path -LiteralPath 'plugins/remotty/.codex-plugin/plugin.json')) {
+    $failures.Add("plugin manifest must exist for version audit.") | Out-Null
+} else {
+    $packageJson = Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json
+    $pluginJson = Get-Content -LiteralPath 'plugins/remotty/.codex-plugin/plugin.json' -Raw | ConvertFrom-Json
+    $packageVersion = [string]$packageJson.version
+    $pluginVersion = [string]$pluginJson.version
+    if ([string]::IsNullOrWhiteSpace($packageVersion) -or
+        [string]::IsNullOrWhiteSpace($pluginVersion) -or
+        $packageVersion -ne $pluginVersion) {
+        $failures.Add("plugin manifest version must match package version.") | Out-Null
+    }
+}
+
 if (Test-Path -LiteralPath 'plugins/remotty/README.md') {
     $pluginReadme = Get-Content -LiteralPath 'plugins/remotty/README.md' -Raw
     foreach ($forbidden in @('fakechat', '/remotty-fakechat-demo', '/remotty-smoke')) {

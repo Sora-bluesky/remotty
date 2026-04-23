@@ -317,6 +317,25 @@ The decision is returned to the same Codex turn.
 
 ### Connection Q&A
 
+> Q. `@remotty` does not appear in the current Codex App chat.
+>
+> A. Keep the current chat open.
+> In PowerShell, move to the project folder first:
+>
+> ```powershell
+> Set-Location C:\path\to\your-project
+> ```
+>
+> Then run:
+>
+> ```powershell
+> remotty config workspace upsert --config $configPath --path (Get-Location).Path
+> ```
+>
+> This registers the project without creating files in the project root.
+> Then continue the remaining setup from PowerShell.
+> If `@remotty` appears later in Codex App, you can return there.
+
 > Q. The bot does not reply.
 >
 > A. First confirm the bridge is still running. In Codex App, ask `@remotty` to check status. In PowerShell, run `remotty service status` and `remotty telegram live-env-check --config $configPath`. If the webhook status is `webhook-configured`, switch the bot back to polling.
