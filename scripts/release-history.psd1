@@ -315,5 +315,17 @@
                 "Removed internal development documents from the public package surface."
             )
         }
+        @{
+            Version = "0.2.9"
+            Commit = "5cdfbe048126207b2f7aaf1bdf752bd198e45d23"
+            Title = "Plugin version refresh fix"
+            Notes = @(
+                "Fixed the bundled Codex plugin manifest that still reported the previous version after npm install -g remotty."
+                "Added release checks that block a release when package and plugin versions drift."
+                "Documented the PowerShell fallback when @remotty is not visible in the current Codex App chat."
+                "Documented update steps in README.md so installed plugins can pick up the new version."
+                "Updated the release bump script so future plugin versions are changed with the package version."
+            )
+        }
     )
 }
