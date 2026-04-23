@@ -338,5 +338,16 @@
                 "Published matching Cargo, npm, and Codex plugin metadata for v0.2.10."
             )
         }
+        @{
+            Version = "0.2.11"
+            Commit = "23f49782eca0a88a13e28fd71541836f9c233d09"
+            Title = "Visible active follow-ups"
+            Notes = @(
+                "Sent Telegram follow-ups into the visible Codex app-server pending input."
+                "Waited for app-server acknowledgement before reporting follow-up success."
+                "Rejected stale stored turn ids after bridge restart instead of reporting false success."
+                "Added tests for rejected steer responses, stale stored turns, and run ownership."
+            )
+        }
     )
 }
