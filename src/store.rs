@@ -112,6 +112,27 @@ pub struct NewRun {
 }
 
 #[derive(Debug, Clone)]
+pub struct NewFollowupInput {
+    pub lane_id: String,
+    pub chat_id: i64,
+    pub thread_key: String,
+    pub telegram_message_id: i64,
+    pub body_text: String,
+    pub payload_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FollowupInputRecord {
+    pub queue_id: String,
+    pub lane_id: String,
+    pub chat_id: i64,
+    pub thread_key: String,
+    pub telegram_message_id: i64,
+    pub body_text: String,
+    pub payload_json: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct RunRecord {
     pub run_id: String,
     pub lane_id: String,
@@ -233,6 +254,22 @@ pub struct PendingApprovalNotification {
     pub chat_id: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestartedRunNotification {
+    pub lane_id: String,
+    pub run_id: String,
+    pub chat_id: i64,
+    pub telegram_message_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StalledRunNotification {
+    pub lane_id: String,
+    pub run_id: String,
+    pub chat_id: i64,
+    pub telegram_message_id: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewApprovalRequest {
     pub request_id: String,
@@ -351,6 +388,23 @@ impl Store {
                 payload_json TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS followup_inputs (
+                queue_id TEXT PRIMARY KEY,
+                lane_id TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                thread_key TEXT NOT NULL,
+                telegram_message_id INTEGER NOT NULL,
+                body_text TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                queued_at_ms INTEGER NOT NULL,
+                started_at_ms INTEGER,
+                finished_at_ms INTEGER,
+                run_id TEXT,
+                failure_text TEXT,
+                UNIQUE(lane_id, telegram_message_id)
+            );
+
             INSERT OR IGNORE INTO schema_migrations(version, applied_at_ms)
                 VALUES (1, unixepoch('subsec') * 1000);
         "#;
@@ -432,6 +486,26 @@ impl Store {
                 "lanes",
                 "active_turn_id",
                 "ALTER TABLE lanes ADD COLUMN active_turn_id TEXT",
+            )?;
+            conn.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS followup_inputs (
+                    queue_id TEXT PRIMARY KEY,
+                    lane_id TEXT NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    thread_key TEXT NOT NULL,
+                    telegram_message_id INTEGER NOT NULL,
+                    body_text TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    queued_at_ms INTEGER NOT NULL,
+                    started_at_ms INTEGER,
+                    finished_at_ms INTEGER,
+                    run_id TEXT,
+                    failure_text TEXT,
+                    UNIQUE(lane_id, telegram_message_id)
+                );
+                "#,
             )
         })?;
         Ok(())
@@ -963,6 +1037,155 @@ impl Store {
             )
         })?;
         Ok(())
+    }
+
+    pub fn enqueue_followup_input(&self, input: NewFollowupInput) -> Result<bool> {
+        let now = Utc::now().timestamp_millis();
+        let inserted = self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                INSERT OR IGNORE INTO followup_inputs(
+                    queue_id, lane_id, chat_id, thread_key, telegram_message_id,
+                    body_text, payload_json, status, queued_at_ms
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+                "#,
+                params![
+                    Uuid::new_v4().to_string(),
+                    input.lane_id,
+                    input.chat_id,
+                    input.thread_key,
+                    input.telegram_message_id,
+                    input.body_text,
+                    input.payload_json,
+                    now,
+                ],
+            )
+        })?;
+        Ok(inserted > 0)
+    }
+
+    pub fn claim_next_followup_input(&self, lane_id: &str) -> Result<Option<FollowupInputRecord>> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            let next = tx
+                .query_row(
+                    r#"
+                    SELECT queue_id, lane_id, chat_id, thread_key, telegram_message_id,
+                           body_text, payload_json
+                    FROM followup_inputs
+                    WHERE lane_id = ?1
+                      AND status = 'pending'
+                    ORDER BY queued_at_ms ASC
+                    LIMIT 1
+                    "#,
+                    params![lane_id],
+                    |row| {
+                        Ok(FollowupInputRecord {
+                            queue_id: row.get(0)?,
+                            lane_id: row.get(1)?,
+                            chat_id: row.get(2)?,
+                            thread_key: row.get(3)?,
+                            telegram_message_id: row.get(4)?,
+                            body_text: row.get(5)?,
+                            payload_json: row.get(6)?,
+                        })
+                    },
+                )
+                .optional()?;
+            if let Some(next) = next {
+                tx.execute(
+                    r#"
+                    UPDATE followup_inputs
+                    SET status = 'processing',
+                        started_at_ms = ?2,
+                        failure_text = NULL
+                    WHERE queue_id = ?1
+                      AND status = 'pending'
+                    "#,
+                    params![next.queue_id, Utc::now().timestamp_millis()],
+                )?;
+                tx.commit()?;
+                Ok(Some(next))
+            } else {
+                tx.commit()?;
+                Ok(None)
+            }
+        })
+    }
+
+    pub fn complete_followup_input(&self, queue_id: &str, run_id: &str) -> Result<()> {
+        let now = Utc::now().timestamp_millis();
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE followup_inputs
+                SET status = 'completed',
+                    finished_at_ms = ?2,
+                    run_id = ?3,
+                    failure_text = NULL
+                WHERE queue_id = ?1
+                "#,
+                params![queue_id, now, run_id],
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn fail_followup_input(
+        &self,
+        queue_id: &str,
+        run_id: Option<&str>,
+        failure_text: &str,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp_millis();
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE followup_inputs
+                SET status = 'failed',
+                    finished_at_ms = ?2,
+                    run_id = ?3,
+                    failure_text = ?4
+                WHERE queue_id = ?1
+                "#,
+                params![queue_id, now, run_id, failure_text],
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn requeue_followup_input(&self, queue_id: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE followup_inputs
+                SET status = 'pending',
+                    started_at_ms = NULL,
+                    failure_text = NULL
+                WHERE queue_id = ?1
+                  AND status = 'processing'
+                "#,
+                params![queue_id],
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn reset_processing_followup_inputs(&self) -> Result<usize> {
+        let updated = self.with_conn(|conn| {
+            conn.execute(
+                r#"
+                UPDATE followup_inputs
+                SET status = 'pending',
+                    started_at_ms = NULL,
+                    failure_text = NULL
+                WHERE status = 'processing'
+                "#,
+                [],
+            )
+        })?;
+        Ok(updated)
     }
 
     pub fn insert_approval_request(&self, request: NewApprovalRequest) -> Result<()> {
@@ -1780,6 +2003,152 @@ impl Store {
         Ok(pending)
     }
 
+    pub fn invalidate_running_runs_for_restart(&self) -> Result<Vec<RestartedRunNotification>> {
+        let running = self.with_conn(|conn| {
+            let mut statement = conn.prepare(
+                r#"
+                SELECT lanes.lane_id,
+                       runs.run_id,
+                       lanes.chat_id,
+                       (
+                         SELECT messages.telegram_message_id
+                         FROM messages
+                         WHERE messages.lane_id = lanes.lane_id
+                           AND messages.run_id = runs.run_id
+                           AND messages.direction = 'outbound'
+                           AND messages.message_kind = 'telegram_progress'
+                           AND messages.telegram_message_id IS NOT NULL
+                         ORDER BY messages.id DESC
+                         LIMIT 1
+                       ) AS telegram_message_id
+                FROM lanes
+                JOIN runs
+                  ON runs.lane_id = lanes.lane_id
+                 AND runs.ended_at_ms IS NULL
+                WHERE lanes.state = 'running'
+                "#,
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok(RestartedRunNotification {
+                    lane_id: row.get(0)?,
+                    run_id: row.get(1)?,
+                    chat_id: row.get(2)?,
+                    telegram_message_id: row.get(3)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+        })?;
+        let now = Utc::now().timestamp_millis();
+        for notification in &running {
+            self.with_conn(|conn| {
+                conn.execute(
+                    r#"
+                    UPDATE lanes
+                    SET state = 'waiting_reply',
+                        codex_session_id = NULL,
+                        active_turn_id = NULL,
+                        waiting_since_ms = NULL
+                    WHERE lane_id = ?1
+                      AND state = 'running'
+                    "#,
+                    params![notification.lane_id],
+                )
+            })?;
+            self.with_conn(|conn| {
+                conn.execute(
+                    r#"
+                    UPDATE runs
+                    SET ended_at_ms = COALESCE(ended_at_ms, ?2),
+                        completion_reason = CASE
+                            WHEN completion_reason = 'failed' THEN completion_reason
+                            ELSE 'restarted'
+                        END,
+                        approval_pending = 0
+                    WHERE run_id = ?1
+                    "#,
+                    params![notification.run_id, now],
+                )
+            })?;
+        }
+        Ok(running)
+    }
+
+    pub fn expire_stalled_app_server_resume_runs(
+        &self,
+        cutoff_started_at_ms: i64,
+    ) -> Result<Vec<StalledRunNotification>> {
+        let stalled = self.with_conn(|conn| {
+            let mut statement = conn.prepare(
+                r#"
+                SELECT lanes.lane_id,
+                       runs.run_id,
+                       lanes.chat_id,
+                       (
+                         SELECT messages.telegram_message_id
+                         FROM messages
+                         WHERE messages.lane_id = lanes.lane_id
+                           AND messages.run_id = runs.run_id
+                           AND messages.direction = 'outbound'
+                           AND messages.message_kind = 'telegram_progress'
+                           AND messages.telegram_message_id IS NOT NULL
+                         ORDER BY messages.id DESC
+                         LIMIT 1
+                       ) AS telegram_message_id
+                FROM lanes
+                JOIN runs
+                  ON runs.lane_id = lanes.lane_id
+                 AND runs.ended_at_ms IS NULL
+                WHERE lanes.state = 'running'
+                  AND lanes.active_turn_id IS NULL
+                  AND runs.run_kind = 'resume'
+                  AND runs.started_at_ms <= ?1
+                "#,
+            )?;
+            let rows = statement.query_map([cutoff_started_at_ms], |row| {
+                Ok(StalledRunNotification {
+                    lane_id: row.get(0)?,
+                    run_id: row.get(1)?,
+                    chat_id: row.get(2)?,
+                    telegram_message_id: row.get(3)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+        })?;
+        let now = Utc::now().timestamp_millis();
+        for notification in &stalled {
+            self.with_conn(|conn| {
+                conn.execute(
+                    r#"
+                    UPDATE lanes
+                    SET state = 'waiting_reply',
+                        active_turn_id = NULL,
+                        waiting_since_ms = NULL
+                    WHERE lane_id = ?1
+                      AND state = 'running'
+                      AND active_turn_id IS NULL
+                    "#,
+                    params![notification.lane_id],
+                )
+            })?;
+            self.with_conn(|conn| {
+                conn.execute(
+                    r#"
+                    UPDATE runs
+                    SET ended_at_ms = COALESCE(ended_at_ms, ?2),
+                        completion_reason = CASE
+                            WHEN completion_reason = 'failed' THEN completion_reason
+                            ELSE 'timed_out'
+                        END,
+                        approval_pending = 0
+                    WHERE run_id = ?1
+                    "#,
+                    params![notification.run_id, now],
+                )
+            })?;
+        }
+        Ok(stalled)
+    }
+
     pub fn fail_resolving_approval_request(
         &self,
         request_id: &str,
@@ -2413,6 +2782,209 @@ mod tests {
         assert_eq!(fetched.lane_id, created.lane_id);
         assert_eq!(fetched.chat_id, 42);
         assert_eq!(fetched.thread_key, "555");
+    }
+
+    #[test]
+    fn invalidate_running_runs_for_restart_marks_lane_waiting_reply() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(93, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane");
+        let run = store
+            .insert_run(NewRun {
+                lane_id: lane.lane_id.clone(),
+                run_kind: "restart".to_owned(),
+            })
+            .expect("run");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-restart"))
+            .expect("lane should update");
+        store
+            .insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_progress",
+                Some(55),
+                Some("processing"),
+                None,
+            )
+            .expect("progress should insert");
+
+        let restarted = store
+            .invalidate_running_runs_for_restart()
+            .expect("restart invalidation should succeed");
+
+        assert_eq!(restarted.len(), 1);
+        assert_eq!(restarted[0].lane_id, lane.lane_id);
+        assert_eq!(restarted[0].run_id, run.run_id);
+        assert_eq!(restarted[0].telegram_message_id, Some(55));
+
+        let lane = store.find_lane(93, "dm").expect("find lane").expect("lane");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id, None);
+        assert_eq!(lane.active_turn_id, None);
+
+        let completion_reason: Option<String> = store
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT completion_reason FROM runs WHERE run_id = ?1",
+                    params![run.run_id],
+                    |row| row.get(0),
+                )
+            })
+            .expect("query run");
+        assert_eq!(completion_reason.as_deref(), Some("restarted"));
+    }
+
+    #[test]
+    fn expire_stalled_app_server_resume_runs_marks_lane_waiting_reply() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(94, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane");
+        let run = store
+            .insert_run(NewRun {
+                lane_id: lane.lane_id.clone(),
+                run_kind: "resume".to_owned(),
+            })
+            .expect("run");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-resume"))
+            .expect("lane should update");
+        store
+            .insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_progress",
+                Some(56),
+                Some("processing"),
+                None,
+            )
+            .expect("progress should insert");
+        let started_at_ms: i64 = store
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT started_at_ms FROM runs WHERE run_id = ?1",
+                    params![run.run_id],
+                    |row| row.get(0),
+                )
+            })
+            .expect("query run");
+
+        let stalled = store
+            .expire_stalled_app_server_resume_runs(started_at_ms)
+            .expect("stalled run should expire");
+
+        assert_eq!(stalled.len(), 1);
+        assert_eq!(stalled[0].lane_id, lane.lane_id);
+        assert_eq!(stalled[0].run_id, run.run_id);
+        assert_eq!(stalled[0].telegram_message_id, Some(56));
+
+        let lane = store.find_lane(94, "dm").expect("find lane").expect("lane");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id.as_deref(), Some("thread-resume"));
+        assert_eq!(lane.active_turn_id, None);
+
+        let completion_reason: Option<String> = store
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT completion_reason FROM runs WHERE run_id = ?1",
+                    params![run.run_id],
+                    |row| row.get(0),
+                )
+            })
+            .expect("query run");
+        assert_eq!(completion_reason.as_deref(), Some("timed_out"));
+    }
+
+    #[test]
+    fn followup_input_queue_round_trip_deduplicates_and_completes() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(95, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane");
+        let input = NewFollowupInput {
+            lane_id: lane.lane_id.clone(),
+            chat_id: 95,
+            thread_key: "dm".to_owned(),
+            telegram_message_id: 501,
+            body_text: "next step".to_owned(),
+            payload_json: "{}".to_owned(),
+        };
+
+        assert!(
+            store
+                .enqueue_followup_input(input.clone())
+                .expect("follow-up should enqueue")
+        );
+        assert!(
+            !store
+                .enqueue_followup_input(input)
+                .expect("duplicate should be ignored")
+        );
+
+        let queued = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("claim should work")
+            .expect("queued input should exist");
+        assert_eq!(queued.body_text, "next step");
+        assert_eq!(queued.telegram_message_id, 501);
+        assert!(
+            store
+                .claim_next_followup_input(&lane.lane_id)
+                .expect("second claim should work")
+                .is_none()
+        );
+
+        store
+            .complete_followup_input(&queued.queue_id, "run-queued")
+            .expect("completion should persist");
+        let status: String = store
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT status FROM followup_inputs WHERE queue_id = ?1",
+                    params![queued.queue_id],
+                    |row| row.get(0),
+                )
+            })
+            .expect("status query");
+        assert_eq!(status, "completed");
+    }
+
+    #[test]
+    fn reset_processing_followup_inputs_returns_them_to_pending() {
+        let (_dir, store) = temp_store();
+        let lane = store
+            .get_or_create_lane(96, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane");
+        store
+            .enqueue_followup_input(NewFollowupInput {
+                lane_id: lane.lane_id.clone(),
+                chat_id: 96,
+                thread_key: "dm".to_owned(),
+                telegram_message_id: 502,
+                body_text: "after restart".to_owned(),
+                payload_json: "{}".to_owned(),
+            })
+            .expect("follow-up should enqueue");
+        let claimed = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("claim should work")
+            .expect("input should exist");
+
+        assert_eq!(
+            store
+                .reset_processing_followup_inputs()
+                .expect("reset should work"),
+            1
+        );
+        let queued = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("claim after reset should work")
+            .expect("input should become pending again");
+        assert_eq!(queued.queue_id, claimed.queue_id);
     }
 
     #[test]

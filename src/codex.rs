@@ -11,7 +11,7 @@ use tracing::warn;
 
 use crate::app_server::{AppServerClient, CodexApprovalRequest, CodexThreadSummary};
 use crate::config::{CodexConfig, CodexTransport, WorkspaceConfig};
-use crate::store::ApprovalRequestRecord;
+use crate::store::{ApprovalRequestRecord, Store};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -39,10 +39,26 @@ pub struct CodexFollowupRequest {
     pub ack: oneshot::Sender<Result<()>>,
 }
 
-pub struct ActiveAppServerTurn {
-    pub thread_id: String,
-    pub turn_id: String,
-    pub ack: oneshot::Sender<Result<()>>,
+#[derive(Clone)]
+pub struct ActiveAppServerTurnPersistence {
+    store: Store,
+    lane_id: String,
+    run_id: String,
+}
+
+impl ActiveAppServerTurnPersistence {
+    pub fn new(store: Store, lane_id: String, run_id: String) -> Self {
+        Self {
+            store,
+            lane_id,
+            run_id,
+        }
+    }
+
+    pub fn persist(&self, thread_id: &str, turn_id: &str) -> Result<()> {
+        self.store
+            .update_lane_active_turn(&self.lane_id, &self.run_id, thread_id, turn_id)
+    }
 }
 
 impl CodexRequest {
@@ -128,7 +144,7 @@ impl CodexRunner {
         workspace: &WorkspaceConfig,
         request: impl Into<CodexRequest>,
         followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
-        turn_sender: Option<mpsc::UnboundedSender<ActiveAppServerTurn>>,
+        turn_persistence: Option<ActiveAppServerTurnPersistence>,
     ) -> Result<CodexOutcome> {
         match self.config.transport {
             CodexTransport::Exec => {
@@ -137,16 +153,14 @@ impl CodexRunner {
                 self.run_command(args, &workspace.path).await
             }
             CodexTransport::AppServer => {
-                let mut client = self.ensure_app_server().await?;
+                let mut client = AppServerClient::spawn(&self.config).await?;
                 client
-                    .as_mut()
-                    .expect("app-server should exist")
                     .start_turn(
                         &self.config,
                         workspace,
                         request.into(),
                         followups,
-                        turn_sender,
+                        turn_persistence,
                     )
                     .await
             }
@@ -180,7 +194,7 @@ impl CodexRunner {
         session_id: &str,
         request: impl Into<CodexRequest>,
         followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
-        turn_sender: Option<mpsc::UnboundedSender<ActiveAppServerTurn>>,
+        turn_persistence: Option<ActiveAppServerTurnPersistence>,
     ) -> Result<CodexOutcome> {
         match self.config.transport {
             CodexTransport::Exec => {
@@ -194,17 +208,15 @@ impl CodexRunner {
                 self.run_command(args, &workspace.path).await
             }
             CodexTransport::AppServer => {
-                let mut client = self.ensure_app_server().await?;
+                let mut client = AppServerClient::spawn(&self.config).await?;
                 client
-                    .as_mut()
-                    .expect("app-server should exist")
                     .resume_turn(
                         &self.config,
                         workspace,
                         session_id,
                         request.into(),
                         followups,
-                        turn_sender,
+                        turn_persistence,
                     )
                     .await
             }

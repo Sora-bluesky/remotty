@@ -24,6 +24,7 @@ command.
 - Connects a Telegram bot to Codex on your Windows PC.
 - Lets a Telegram chat choose the Codex thread to continue.
 - Sends Telegram messages to that thread.
+- Queues text you send while Codex is already working.
 - Returns Codex replies to the same Telegram chat.
 - Relays approval prompts to Telegram.
 - Stores the bot token in Windows protected storage.

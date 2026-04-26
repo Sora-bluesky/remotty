@@ -5,17 +5,20 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::codex::{ActiveAppServerTurn, CodexFollowupRequest, CodexOutcome, CodexRequest};
+use crate::codex::{
+    ActiveAppServerTurnPersistence, CodexFollowupRequest, CodexOutcome, CodexRequest,
+};
 use crate::config::{CodexConfig, WorkspaceConfig};
 use crate::store::{ApprovalRequestKind, ApprovalRequestRecord};
 
 const MIN_CODEX_APP_SERVER_VERSION: &str = "0.118.0";
 const APP_SERVER_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
+const APP_SERVER_RESUME_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexApprovalRequest {
@@ -81,7 +84,7 @@ impl AppServerClient {
         workspace: &WorkspaceConfig,
         request: CodexRequest,
         followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
-        turn_sender: Option<mpsc::UnboundedSender<ActiveAppServerTurn>>,
+        turn_persistence: Option<ActiveAppServerTurnPersistence>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
         let mut params = json!({
@@ -100,9 +103,10 @@ impl AppServerClient {
             config,
             workspace,
             &thread_id,
+            true,
             request,
             followups,
-            turn_sender,
+            turn_persistence,
         )
         .await
     }
@@ -114,10 +118,10 @@ impl AppServerClient {
         thread_id: &str,
         request: CodexRequest,
         followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
-        turn_sender: Option<mpsc::UnboundedSender<ActiveAppServerTurn>>,
+        turn_persistence: Option<ActiveAppServerTurnPersistence>,
     ) -> Result<CodexOutcome> {
         self.ensure_initialized().await?;
-        let mut params = json!({
+        let params = json!({
                 "threadId": thread_id,
                 "cwd": workspace.path.display().to_string(),
                 "approvalPolicy": config.approval,
@@ -125,15 +129,16 @@ impl AppServerClient {
                 "sandbox": config.sandbox,
                 "persistExtendedHistory": true,
         });
-        add_model_param(&mut params, config);
-        self.call("thread/resume", params).await?;
+        self.call_with_timeout("thread/resume", params, APP_SERVER_RESUME_TIMEOUT)
+            .await?;
         self.start_turn_on_thread(
             config,
             workspace,
             thread_id,
+            false,
             request,
             followups,
-            turn_sender,
+            turn_persistence,
         )
         .await
     }
@@ -176,9 +181,10 @@ impl AppServerClient {
         config: &CodexConfig,
         workspace: &WorkspaceConfig,
         thread_id: &str,
+        include_model: bool,
         request: CodexRequest,
         followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
-        turn_sender: Option<mpsc::UnboundedSender<ActiveAppServerTurn>>,
+        turn_persistence: Option<ActiveAppServerTurnPersistence>,
     ) -> Result<CodexOutcome> {
         let mut params = json!({
             "threadId": thread_id,
@@ -188,33 +194,14 @@ impl AppServerClient {
             "approvalsReviewer": "user",
             "sandboxPolicy": sandbox_policy_for_workspace(config, workspace),
         });
-        add_model_param(&mut params, config);
+        if include_model {
+            add_model_param(&mut params, config);
+        }
         let turn = self.call("turn/start", params).await?;
         let turn_id = turn_result_turn_id(&turn)?;
-        if let Some(sender) = turn_sender {
-            let (ack, ack_receiver) = oneshot::channel();
-            if sender
-                .send(ActiveAppServerTurn {
-                    thread_id: thread_id.to_owned(),
-                    turn_id: turn_id.clone(),
-                    ack,
-                })
-                .is_err()
-            {
-                warn!("active app-server turn persistence channel was closed");
-            } else {
-                match timeout(APP_SERVER_CONTROL_TIMEOUT, ack_receiver).await {
-                    Ok(Ok(Ok(()))) => {}
-                    Ok(Ok(Err(error))) => {
-                        warn!("failed to persist active app-server turn: {error:#}");
-                    }
-                    Ok(Err(_)) => {
-                        warn!("active app-server turn persistence was canceled");
-                    }
-                    Err(_) => {
-                        warn!("active app-server turn persistence timed out");
-                    }
-                }
+        if let Some(persistence) = turn_persistence {
+            if let Err(error) = persistence.persist(thread_id, &turn_id) {
+                warn!("failed to persist active app-server turn: {error:#}");
             }
         }
         self.read_until_pause_or_completion(thread_id, &turn_id, followups)
@@ -234,6 +221,16 @@ impl AppServerClient {
     }
 
     async fn call(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.call_with_timeout(method, params, APP_SERVER_CONTROL_TIMEOUT)
+            .await
+    }
+
+    async fn call_with_timeout(
+        &mut self,
+        method: &str,
+        params: Value,
+        timeout_duration: Duration,
+    ) -> Result<Value> {
         let request_id = format!("client-{}", self.next_request_id);
         self.next_request_id += 1;
         self.send_json_with_timeout(
@@ -247,7 +244,7 @@ impl AppServerClient {
         .await?;
 
         timeout(
-            APP_SERVER_CONTROL_TIMEOUT,
+            timeout_duration,
             self.read_call_response(method, &request_id),
         )
         .await
@@ -1630,6 +1627,104 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {{
         assert!(log.contains(r#""method":"initialize""#));
         assert!(log.contains(r#""method":"initialized""#));
         assert!(log.contains(r#""method":"turn/steer""#));
+    }
+
+    #[tokio::test]
+    async fn resume_turn_omits_model_for_existing_thread() {
+        let dir = tempdir().expect("tempdir should be created");
+        let log_path = dir.path().join("app-server.log");
+        let ps1_path = dir.path().join("fake-app-server.ps1");
+        let escaped_log_path = log_path.display().to_string().replace('\'', "''");
+        fs::write(
+            &ps1_path,
+            format!(
+                r#"
+$log = '{escaped_log_path}'
+while ($null -ne ($line = [Console]::In.ReadLine())) {{
+  Add-Content -LiteralPath $log -Value $line
+  $message = $line | ConvertFrom-Json
+  if ($message.method -eq 'initialize') {{
+    @{{ id = $message.id; result = @{{ userAgent = 'Codex/0.118.0' }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+  }} elseif ($message.method -eq 'thread/resume') {{
+    @{{ id = $message.id; result = @{{ thread = @{{ id = 'thread-1' }} }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+  }} elseif ($message.method -eq 'turn/start') {{
+    @{{ id = $message.id; result = @{{ turn = @{{ id = 'turn-1' }} }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+    @{{ method = 'item/agentMessage/delta'; params = @{{ threadId = 'thread-1'; turnId = 'turn-1'; delta = 'done' }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+    @{{ method = 'turn/completed'; params = @{{ turn = @{{ id = 'turn-1'; status = 'completed'; items = @(@{{ type = 'agent_message'; text = 'done' }}) }} }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+  }} elseif ($message.method -eq 'thread/read') {{
+    @{{ id = $message.id; result = @{{ thread = @{{ turns = @(@{{ id = 'turn-1'; items = @(@{{ type = 'agentMessage'; text = 'done' }}) }}) }} }} }} | ConvertTo-Json -Compress -Depth 10 -WarningAction SilentlyContinue
+    [Console]::Out.Flush()
+  }}
+}}
+"#
+            ),
+        )
+        .expect("fake app-server script should write");
+        let mut child = Command::new("pwsh")
+            .args(["-NoProfile", "-File"])
+            .arg(&ps1_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("fake app-server should spawn");
+        let stdin = child.stdin.take().expect("stdin should exist");
+        let stdout = child.stdout.take().expect("stdout should exist");
+        let mut client = AppServerClient {
+            _child: child,
+            stdin,
+            stdout: BufReader::new(stdout),
+            backlog: VecDeque::new(),
+            next_request_id: 1,
+            initialized: false,
+        };
+
+        let config = CodexConfig {
+            binary: "codex".to_owned(),
+            model: "gpt-5.4".to_owned(),
+            sandbox: "workspace-write".to_owned(),
+            approval: "on-request".to_owned(),
+            transport: CodexTransport::AppServer,
+            profile: None,
+        };
+        let workspace = WorkspaceConfig {
+            id: "main".to_owned(),
+            path: PathBuf::from("C:/workspace"),
+            writable_roots: vec![PathBuf::from("C:/workspace")],
+            default_mode: LaneMode::AwaitReply,
+            continue_prompt: "continue".to_owned(),
+            checks_profile: "default".to_owned(),
+        };
+
+        let outcome = client
+            .resume_turn(
+                &config,
+                &workspace,
+                "thread-1",
+                CodexRequest::new("follow up"),
+                None,
+                None,
+            )
+            .await
+            .expect("resume turn should succeed");
+        assert_eq!(outcome.last_message, "done");
+        client
+            .stdin
+            .shutdown()
+            .await
+            .expect("fake app-server stdin should close");
+        let _ = timeout(Duration::from_secs(2), client._child.wait()).await;
+
+        let log = fs::read_to_string(&log_path).expect("fake app-server log");
+        assert!(log.contains(r#""method":"thread/resume""#));
+        assert!(log.contains(r#""method":"turn/start""#));
+        assert!(!log.contains(r#""model":"gpt-5.4""#));
     }
 
     #[tokio::test]

@@ -7,20 +7,23 @@ use std::sync::{
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use chrono::Utc;
 use tokio::process::Command as TokioCommand;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::app_server::CodexThreadSummary;
-use crate::codex::{ActiveAppServerTurn, CodexFollowupRequest, CodexRequest, CodexRunner};
+use crate::codex::{
+    ActiveAppServerTurnPersistence, CodexFollowupRequest, CodexRequest, CodexRunner,
+};
 use crate::config::{
     CodexTransport, Config, LaneMode, checks::CheckRunSummary, checks::run_profile,
 };
 use crate::store::{
-    ApprovalRequestStatus, ApprovalRequestTransport, CodexThreadBinding, LaneRecord, LaneState,
-    NewCodexThreadBinding, NewRun, Store,
+    ApprovalRequestStatus, ApprovalRequestTransport, CodexThreadBinding, FollowupInputRecord,
+    LaneRecord, LaneState, NewCodexThreadBinding, NewFollowupInput, NewRun, Store,
 };
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
@@ -32,7 +35,8 @@ use crate::windows_secret::load_secret;
 const MAX_COMPLETION_REPAIR_TURNS: usize = 2;
 const MAX_TELEGRAM_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_INFINITE_AUTO_TURNS: usize = 16;
-const ACTIVE_FOLLOWUP_ACK_TIMEOUT: Duration = Duration::from_secs(75);
+const APP_SERVER_RESUME_RUN_TIMEOUT: Duration = Duration::from_secs(12);
+const APP_SERVER_STALLED_RUN_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 const AUTO_CONTINUE_STOP_MARKER: &str = "CHANNEL_WAITING";
 const TELEGRAM_MESSAGE_CHAR_LIMIT: usize = 4096;
 
@@ -45,7 +49,6 @@ struct ActiveTurnRegistry {
 #[derive(Clone)]
 struct ActiveTurnSender {
     id: u64,
-    sender: mpsc::UnboundedSender<CodexFollowupRequest>,
 }
 
 struct ActiveTurnGuard {
@@ -62,15 +65,12 @@ impl ActiveTurnRegistry {
         ActiveTurnGuard,
         mpsc::UnboundedReceiver<CodexFollowupRequest>,
     ) {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (_sender, receiver) = mpsc::unbounded_channel();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.inner.lock().expect("active turn registry").insert(
-            key.to_owned(),
-            ActiveTurnSender {
-                id,
-                sender: sender.clone(),
-            },
-        );
+        self.inner
+            .lock()
+            .expect("active turn registry")
+            .insert(key.to_owned(), ActiveTurnSender { id });
         (
             ActiveTurnGuard {
                 key: key.to_owned(),
@@ -86,27 +86,6 @@ impl ActiveTurnRegistry {
             .lock()
             .expect("active turn registry")
             .contains_key(key)
-    }
-
-    async fn send_followup(&self, key: &str, request: CodexRequest) -> Result<bool> {
-        let sender = self
-            .inner
-            .lock()
-            .expect("active turn registry")
-            .get(key)
-            .map(|entry| entry.sender.clone());
-        let Some(sender) = sender else {
-            return Ok(false);
-        };
-        let (ack, ack_receiver) = oneshot::channel();
-        if sender.send(CodexFollowupRequest { request, ack }).is_err() {
-            return Ok(false);
-        }
-        timeout(ACTIVE_FOLLOWUP_ACK_TIMEOUT, ack_receiver)
-            .await
-            .map_err(|_| anyhow!("active app-server follow-up timed out"))?
-            .map_err(|_| anyhow!("active app-server follow-up was canceled"))??;
-        Ok(true)
     }
 }
 
@@ -250,8 +229,13 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
     seed_admin_senders(&store, &config.telegram.admin_sender_ids)?;
     let codex = CodexRunner::new(config.codex.clone());
     let active_turns = ActiveTurnRegistry::default();
+    invalidate_running_progress_messages_for_restart(&store, &telegram).await;
+    reset_processing_followup_inputs_for_restart(&store);
     fail_resolving_approval_notifications(&store, &telegram).await;
     invalidate_pending_approval_notifications_for_restart(&store, &telegram).await;
+    if config.codex.transport == CodexTransport::AppServer {
+        spawn_stalled_app_server_resume_monitor(store.clone(), telegram.clone(), shutdown.clone());
+    }
 
     let mut offset = None;
     loop {
@@ -326,7 +310,7 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
                 {
                     warn!("failed to handle chat {chat_id}: {error:#}");
                     let _ = task_telegram
-                        .send_message(chat_id, &format_runtime_failure_message())
+                        .send_message(chat_id, &format_runtime_failure_message(&error))
                         .await;
                 }
             });
@@ -458,81 +442,11 @@ async fn handle_message(
     if config.codex.transport == CodexTransport::AppServer {
         if let Some(lane) = existing_lane.as_ref() {
             if lane.state == LaneState::Running {
-                let mut running_keys = vec![active_turn_key(
-                    &lane.lane_id,
-                    lane.codex_session_id.as_deref(),
-                )];
-                if !running_keys.contains(&lane.lane_id) {
-                    running_keys.push(lane.lane_id.clone());
-                }
-                if let Some(binding) = saved_thread_binding.as_ref() {
-                    let binding_key =
-                        active_turn_key(&lane.lane_id, Some(&binding.codex_thread_id));
-                    if !running_keys.contains(&binding_key) {
-                        running_keys.push(binding_key);
-                    }
-                }
-                if let Some(running_key) = running_keys
-                    .into_iter()
-                    .find(|key| active_turns.is_active(key))
-                {
-                    store.insert_message(
-                        &lane.lane_id,
-                        None,
-                        "inbound",
-                        "telegram_steer",
-                        Some(update.telegram_message_id),
-                        Some(&update.text),
-                        Some(&update.payload_json),
-                    )?;
-                    let reply = if !update.attachments.is_empty() {
-                        "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
-                        .to_owned()
-                    } else {
-                        match active_turns
-                            .send_followup(
-                                running_key.as_str(),
-                                CodexRequest::new(update.text.clone()),
-                            )
-                            .await
-                        {
-                            Ok(true) => {
-                                "画面上の保留入力へ追加しました。現在の処理に続けて渡されます。"
-                                    .to_owned()
-                            }
-                            Ok(false) => {
-                                "現在の処理が続いています。完了後にもう一度送ってください。"
-                                    .to_owned()
-                            }
-                            Err(error) => {
-                                warn!("failed to steer live app-server turn: {error:#}");
-                                store.update_lane_state(
-                                    &lane.lane_id,
-                                    LaneState::WaitingReply,
-                                    lane.codex_session_id.as_deref(),
-                                )?;
-                                "画面上の保留入力へ追加できませんでした。完了後にもう一度送ってください。"
-                                    .to_owned()
-                            }
-                        }
-                    };
-                    let sent = telegram.send_message(update.chat_id, &reply).await?;
-                    store.insert_message(
-                        &lane.lane_id,
-                        None,
-                        "outbound",
-                        "telegram_steer_status",
-                        Some(sent.message_id),
-                        Some(&reply),
-                        None,
-                    )?;
-                    return Ok(());
-                }
                 store.insert_message(
                     &lane.lane_id,
                     None,
                     "inbound",
-                    "telegram_steer",
+                    "telegram_followup_queued",
                     Some(update.telegram_message_id),
                     Some(&update.text),
                     Some(&update.payload_json),
@@ -540,29 +454,27 @@ async fn handle_message(
                 let reply = if !update.attachments.is_empty() {
                     "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
                         .to_owned()
-                } else if lane.active_turn_id.is_some() {
-                    store.update_lane_state(
-                        &lane.lane_id,
-                        LaneState::WaitingReply,
-                        lane.codex_session_id.as_deref(),
-                    )?;
-                    "実行中ターンの読み取りを再接続できません。完了後にもう一度送ってください。"
-                        .to_owned()
                 } else {
-                    store.update_lane_state(
-                        &lane.lane_id,
-                        LaneState::WaitingReply,
-                        lane.codex_session_id.as_deref(),
-                    )?;
-                    "実行中ターンの識別子を復元できません。完了後にもう一度送ってください。"
-                        .to_owned()
+                    let inserted = store.enqueue_followup_input(NewFollowupInput {
+                        lane_id: lane.lane_id.clone(),
+                        chat_id: update.chat_id,
+                        thread_key: update.thread_key.clone(),
+                        telegram_message_id: update.telegram_message_id,
+                        body_text: update.text.clone(),
+                        payload_json: update.payload_json.clone(),
+                    })?;
+                    if inserted {
+                        "処理中のため、次の入力として受け付けました。".to_owned()
+                    } else {
+                        "この入力はすでに受け付けています。".to_owned()
+                    }
                 };
                 let sent = telegram.send_message(update.chat_id, &reply).await?;
                 store.insert_message(
                     &lane.lane_id,
                     None,
                     "outbound",
-                    "telegram_steer_status",
+                    "telegram_followup_queued_status",
                     Some(sent.message_id),
                     Some(&reply),
                     None,
@@ -603,27 +515,18 @@ async fn handle_message(
                     "処理中のターンへ送れる追加入力はテキストだけです。添付は完了後に送ってください。"
                         .to_owned()
                 } else {
-                    match active_turns
-                        .send_followup(session_id, CodexRequest::new(update.text.clone()))
-                        .await
-                    {
-                        Ok(true) => {
-                            "画面上の保留入力へ追加しました。現在の処理に続けて渡されます。"
-                                .to_owned()
-                        }
-                        Ok(false) => {
-                            "現在の処理が続いています。完了後にもう一度送ってください。".to_owned()
-                        }
-                        Err(error) => {
-                            warn!("failed to steer live app-server turn: {error:#}");
-                            store.update_lane_state(
-                                &lane.lane_id,
-                                LaneState::WaitingReply,
-                                selected_session_id.as_deref(),
-                            )?;
-                            "画面上の保留入力へ追加できませんでした。完了後にもう一度送ってください。"
-                                .to_owned()
-                        }
+                    let inserted = store.enqueue_followup_input(NewFollowupInput {
+                        lane_id: lane.lane_id.clone(),
+                        chat_id: update.chat_id,
+                        thread_key: update.thread_key.clone(),
+                        telegram_message_id: update.telegram_message_id,
+                        body_text: update.text.clone(),
+                        payload_json: update.payload_json.clone(),
+                    })?;
+                    if inserted {
+                        "処理中のため、次の入力として受け付けました。".to_owned()
+                    } else {
+                        "この入力はすでに受け付けています。".to_owned()
                     }
                 };
                 let sent = telegram.send_message(update.chat_id, &reply).await?;
@@ -631,7 +534,7 @@ async fn handle_message(
                     &lane.lane_id,
                     None,
                     "outbound",
-                    "telegram_steer_status",
+                    "telegram_followup_queued_status",
                     Some(sent.message_id),
                     Some(&reply),
                     None,
@@ -705,59 +608,54 @@ async fn handle_message(
     } else {
         None
     };
-    let turn_sender = if config.codex.transport == CodexTransport::AppServer {
-        let (sender, mut receiver) = mpsc::unbounded_channel::<ActiveAppServerTurn>();
-        let lane_id = lane.lane_id.clone();
-        let run_id = run.run_id.clone();
-        let store = store.clone();
-        tokio::spawn(async move {
-            if let Some(turn) = receiver.recv().await {
-                let result = store.update_lane_active_turn(
-                    &lane_id,
-                    &run_id,
-                    &turn.thread_id,
-                    &turn.turn_id,
-                );
-                if let Err(error) = &result {
-                    warn!("failed to persist active app-server turn: {error:#}");
-                }
-                let _ = turn.ack.send(result);
-            }
-        });
-        Some(sender)
+    let turn_persistence = if config.codex.transport == CodexTransport::AppServer {
+        Some(ActiveAppServerTurnPersistence::new(
+            store.clone(),
+            lane.lane_id.clone(),
+            run.run_id.clone(),
+        ))
     } else {
         None
     };
     let mut active_turn_guard = None;
-    let initial_result = if let Some(session_id) = selected_session_id.as_deref() {
-        if let Some((guard, followups)) = active_turn {
-            active_turn_guard = Some(guard);
-            codex
-                .resume_with_followups_and_turn_sender(
-                    workspace,
-                    session_id,
-                    request,
-                    Some(followups),
-                    turn_sender,
-                )
-                .await
-        } else {
-            codex.resume(workspace, session_id, request).await
-        }
-    } else {
-        if let Some((guard, followups)) = active_turn {
+    let is_app_server_resume =
+        config.codex.transport == CodexTransport::AppServer && selected_session_id.is_some();
+    let initial_future = async {
+        if let Some(session_id) = selected_session_id.as_deref() {
+            if let Some((guard, followups)) = active_turn {
+                active_turn_guard = Some(guard);
+                codex
+                    .resume_with_followups_and_turn_sender(
+                        workspace,
+                        session_id,
+                        request,
+                        Some(followups),
+                        turn_persistence,
+                    )
+                    .await
+            } else {
+                codex.resume(workspace, session_id, request).await
+            }
+        } else if let Some((guard, followups)) = active_turn {
             active_turn_guard = Some(guard);
             codex
                 .start_with_followups_and_turn_sender(
                     workspace,
                     request,
                     Some(followups),
-                    turn_sender,
+                    turn_persistence,
                 )
                 .await
         } else {
             codex.start(workspace, request).await
         }
+    };
+    let initial_result = if is_app_server_resume {
+        timeout(APP_SERVER_RESUME_RUN_TIMEOUT, initial_future)
+            .await
+            .map_err(|_| anyhow!("app-server resume run timed out"))?
+    } else {
+        initial_future.await
     };
     let initial_outcome = match initial_result {
         Ok(outcome) => outcome,
@@ -870,8 +768,257 @@ async fn handle_message(
     )?;
     drop(active_turn_guard);
 
+    if config.codex.transport == CodexTransport::AppServer && next_state == LaneState::WaitingReply
+    {
+        drain_followup_queue(
+            config,
+            store,
+            telegram,
+            codex,
+            active_turns,
+            &lane.lane_id,
+            update.chat_id,
+            &update.thread_key,
+        )
+        .await?;
+    }
+
     info!("handled lane {}", lane.lane_id);
     Ok(())
+}
+
+async fn drain_followup_queue(
+    config: &Config,
+    store: &Store,
+    telegram: &impl TelegramApi,
+    codex: &CodexRunner,
+    active_turns: &ActiveTurnRegistry,
+    lane_id: &str,
+    chat_id: i64,
+    thread_key: &str,
+) -> Result<()> {
+    loop {
+        let Some(input) = store.claim_next_followup_input(lane_id)? else {
+            return Ok(());
+        };
+        let should_continue = process_followup_input(
+            config,
+            store,
+            telegram,
+            codex,
+            active_turns,
+            input,
+            chat_id,
+            thread_key,
+        )
+        .await?;
+        if !should_continue {
+            return Ok(());
+        }
+    }
+}
+
+async fn process_followup_input(
+    config: &Config,
+    store: &Store,
+    telegram: &impl TelegramApi,
+    codex: &CodexRunner,
+    active_turns: &ActiveTurnRegistry,
+    input: FollowupInputRecord,
+    chat_id: i64,
+    thread_key: &str,
+) -> Result<bool> {
+    let Some(lane) = store.find_lane(chat_id, thread_key)? else {
+        store.fail_followup_input(&input.queue_id, None, "lane not found")?;
+        return Ok(false);
+    };
+    if lane.state != LaneState::WaitingReply {
+        store.requeue_followup_input(&input.queue_id)?;
+        return Ok(false);
+    }
+    let binding = store.find_codex_thread_binding(chat_id, thread_key)?;
+    let workspace = resolve_workspace_for_message(config, Some(&lane), binding.as_ref())?;
+    let Some(session_id) =
+        selected_codex_session_id(&lane, binding.as_ref()).map(ToOwned::to_owned)
+    else {
+        let text = "保存済みの入力を処理できませんでした。Codex スレッドを選んでから、もう一度送ってください。";
+        store.fail_followup_input(&input.queue_id, None, text)?;
+        send_and_store_telegram_chunks(
+            store,
+            telegram,
+            input.chat_id,
+            &input.lane_id,
+            None,
+            "telegram_followup_failed",
+            text,
+        )
+        .await?;
+        return Ok(false);
+    };
+
+    store.update_lane_state(&lane.lane_id, LaneState::Running, Some(&session_id))?;
+    let run = store.insert_run(NewRun {
+        lane_id: lane.lane_id.clone(),
+        run_kind: "queued_followup".to_owned(),
+    })?;
+    let progress_text = "次の入力を処理しています。完了したら、このメッセージを更新します。";
+    let progress_message = telegram.send_message(input.chat_id, progress_text).await?;
+    store.insert_message(
+        &lane.lane_id,
+        Some(&run.run_id),
+        "outbound",
+        "telegram_followup_progress",
+        Some(progress_message.message_id),
+        Some(progress_text),
+        None,
+    )?;
+
+    let key = active_turn_key(&lane.lane_id, Some(&session_id));
+    let (guard, followups) = active_turns.register(&key);
+    let turn_persistence = ActiveAppServerTurnPersistence::new(
+        store.clone(),
+        lane.lane_id.clone(),
+        run.run_id.clone(),
+    );
+    let request = build_user_request(&input.body_text, &[], lane.mode, &workspace.continue_prompt);
+    let result = timeout(
+        APP_SERVER_RESUME_RUN_TIMEOUT,
+        codex.resume_with_followups_and_turn_sender(
+            workspace,
+            &session_id,
+            request,
+            Some(followups),
+            Some(turn_persistence),
+        ),
+    )
+    .await
+    .map_err(|_| anyhow!("app-server queued follow-up run timed out"))?;
+    drop(guard);
+
+    let initial_outcome = match result {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let text = "保存済みの入力を処理できませんでした。状態を確認してから、もう一度送ってください。";
+            warn!(
+                "failed to process queued follow-up {}: {error:#}",
+                input.queue_id
+            );
+            store.update_lane_state(&lane.lane_id, LaneState::Failed, Some(&session_id))?;
+            store.finish_run(&run.run_id, None, LaneState::Failed.as_str(), false, 0, 0)?;
+            store.fail_followup_input(&input.queue_id, Some(&run.run_id), text)?;
+            let _ = telegram
+                .edit_message(input.chat_id, progress_message.message_id, text)
+                .await;
+            store.insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_followup_failed",
+                Some(progress_message.message_id),
+                Some(text),
+                None,
+            )?;
+            return Ok(false);
+        }
+    };
+    let (outcome, unresolved_checks, auto_turns_completed) =
+        continue_lane_after_completion(config, workspace, codex, &lane, initial_outcome).await?;
+    let reply = if let Some(summary) = unresolved_checks.as_ref() {
+        truncate(
+            &format_reply_with_failed_checks(&outcome.last_message, summary, auto_turns_completed),
+            config.policy.max_output_chars,
+        )
+    } else if outcome.last_message.trim().is_empty() {
+        "応答本文を取得できませんでした。ローカルのログを確認してください。".to_owned()
+    } else {
+        truncate(&outcome.last_message, config.policy.max_output_chars)
+    };
+    let reply_chunks = split_telegram_message(&reply, TELEGRAM_MESSAGE_CHAR_LIMIT);
+    let first_reply = reply_chunks.first().map(String::as_str).unwrap_or("");
+    if telegram
+        .edit_message(input.chat_id, progress_message.message_id, first_reply)
+        .await
+        .is_err()
+    {
+        send_and_store_telegram_chunks(
+            store,
+            telegram,
+            input.chat_id,
+            &lane.lane_id,
+            Some(&run.run_id),
+            "telegram_followup_text",
+            &reply,
+        )
+        .await?;
+    } else {
+        store.insert_message(
+            &lane.lane_id,
+            Some(&run.run_id),
+            "outbound",
+            "telegram_followup_text",
+            Some(progress_message.message_id),
+            Some(first_reply),
+            None,
+        )?;
+        for chunk in reply_chunks.iter().skip(1) {
+            let sent = telegram.send_message(input.chat_id, chunk).await?;
+            store.insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_followup_text",
+                Some(sent.message_id),
+                Some(chunk.as_str()),
+                None,
+            )?;
+        }
+    }
+
+    let next_state = if outcome.approval_pending {
+        LaneState::NeedsLocalApproval
+    } else if unresolved_checks.is_some() {
+        LaneState::Failed
+    } else {
+        LaneState::WaitingReply
+    };
+    if let Err(error) = persist_approval_requests(
+        store,
+        telegram,
+        input.chat_id,
+        &lane.lane_id,
+        &run.run_id,
+        config.codex.transport,
+        &outcome.approval_requests,
+    )
+    .await
+    {
+        store.update_lane_state(
+            &lane.lane_id,
+            LaneState::Failed,
+            outcome.session_id.as_deref(),
+        )?;
+        store.finish_run(
+            &run.run_id,
+            outcome.exit_code,
+            LaneState::Failed.as_str(),
+            false,
+            outcome.approval_request_count,
+            outcome.approval_resolved_count,
+        )?;
+        store.fail_followup_input(&input.queue_id, Some(&run.run_id), &error.to_string())?;
+        return Err(error);
+    }
+    store.update_lane_state(&lane.lane_id, next_state, outcome.session_id.as_deref())?;
+    store.finish_run(
+        &run.run_id,
+        outcome.exit_code,
+        next_state.as_str(),
+        outcome.approval_pending,
+        outcome.approval_request_count,
+        outcome.approval_resolved_count,
+    )?;
+    store.complete_followup_input(&input.queue_id, &run.run_id)?;
+    Ok(next_state == LaneState::WaitingReply)
 }
 
 fn handle_control_command(
@@ -1713,7 +1860,20 @@ fn format_workspace_dirty_warning() -> String {
         .to_owned()
 }
 
-fn format_runtime_failure_message() -> String {
+fn format_runtime_failure_message(error: &anyhow::Error) -> String {
+    let detail = error.to_string();
+    if detail.contains("app-server `thread/resume` timed out") {
+        return "Codex のこのスレッドへ戻れませんでした。いま Codex App 側で処理中の可能性があります。画面の処理が終わってから、もう一度送ってください。"
+            .to_owned();
+    }
+    if detail.contains("app-server resume run timed out") {
+        return "Codex のこのスレッドへ戻る処理が時間内に終わりませんでした。いま Codex App 側で処理中の可能性があります。画面の処理が終わってから、もう一度送ってください。"
+            .to_owned();
+    }
+    if detail.contains("app-server `turn/start` timed out") {
+        return "Codex の処理開始がタイムアウトしました。少し待ってから再送してください。必要ならローカルのログを確認します。"
+            .to_owned();
+    }
     "処理中に失敗しました。少し待ってから再送してください。必要ならローカルのログを確認します。"
         .to_owned()
 }
@@ -2097,6 +2257,160 @@ async fn invalidate_pending_approval_notifications_for_restart(
                 warn!(
                     "failed to notify invalidated approval request {}: {error:#}",
                     pending_request.request.request_id
+                );
+            }
+        }
+    }
+}
+
+async fn invalidate_running_progress_messages_for_restart(
+    store: &Store,
+    telegram: &impl TelegramApi,
+) {
+    let running = match store.invalidate_running_runs_for_restart() {
+        Ok(running) => running,
+        Err(error) => {
+            warn!("failed to invalidate running lanes on restart: {error:#}");
+            return;
+        }
+    };
+
+    for notification in running {
+        let text = "bridge を再起動したため、この処理の更新は止まりました。必要なら同じ依頼をもう一度送ってください。";
+        let should_send_new_message = match notification.telegram_message_id {
+            Some(message_id) => telegram
+                .edit_message(notification.chat_id, message_id, text)
+                .await
+                .is_err(),
+            None => true,
+        };
+        if !should_send_new_message {
+            if let Err(error) = store.insert_message(
+                &notification.lane_id,
+                Some(&notification.run_id),
+                "outbound",
+                "telegram_progress_invalidated_on_restart",
+                notification.telegram_message_id,
+                Some(text),
+                None,
+            ) {
+                warn!(
+                    "failed to record restarted progress edit {}: {error:#}",
+                    notification.run_id
+                );
+            }
+            continue;
+        }
+        match telegram.send_message(notification.chat_id, text).await {
+            Ok(sent) => {
+                if let Err(error) = store.insert_message(
+                    &notification.lane_id,
+                    Some(&notification.run_id),
+                    "outbound",
+                    "telegram_progress_invalidated_on_restart",
+                    Some(sent.message_id),
+                    Some(text),
+                    None,
+                ) {
+                    warn!(
+                        "failed to record restarted progress notice {}: {error:#}",
+                        notification.run_id
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    "failed to notify restarted progress {}: {error:#}",
+                    notification.run_id
+                );
+            }
+        }
+    }
+}
+
+fn reset_processing_followup_inputs_for_restart(store: &Store) {
+    match store.reset_processing_followup_inputs() {
+        Ok(count) if count > 0 => {
+            info!("reset {count} processing follow-up input(s) after restart");
+        }
+        Ok(_) => {}
+        Err(error) => warn!("failed to reset processing follow-up inputs: {error:#}"),
+    }
+}
+
+fn spawn_stalled_app_server_resume_monitor(
+    store: Store,
+    telegram: TelegramClient,
+    shutdown: CancellationToken,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = sleep(APP_SERVER_STALLED_RUN_SCAN_INTERVAL) => {}
+            }
+            expire_stalled_app_server_resume_runs(&store, &telegram).await;
+        }
+    });
+}
+
+async fn expire_stalled_app_server_resume_runs(store: &Store, telegram: &impl TelegramApi) {
+    let cutoff = Utc::now().timestamp_millis() - APP_SERVER_RESUME_RUN_TIMEOUT.as_millis() as i64;
+    let stalled = match store.expire_stalled_app_server_resume_runs(cutoff) {
+        Ok(stalled) => stalled,
+        Err(error) => {
+            warn!("failed to expire stalled app-server resume runs: {error:#}");
+            return;
+        }
+    };
+
+    for notification in stalled {
+        let text = "Codex のこのスレッドへ戻る処理が時間内に終わりませんでした。Codex App 側の処理が終わってから、もう一度送ってください。";
+        let should_send_new_message = match notification.telegram_message_id {
+            Some(message_id) => telegram
+                .edit_message(notification.chat_id, message_id, text)
+                .await
+                .is_err(),
+            None => true,
+        };
+        if !should_send_new_message {
+            if let Err(error) = store.insert_message(
+                &notification.lane_id,
+                Some(&notification.run_id),
+                "outbound",
+                "telegram_progress_timed_out",
+                notification.telegram_message_id,
+                Some(text),
+                None,
+            ) {
+                warn!(
+                    "failed to record stalled progress edit {}: {error:#}",
+                    notification.run_id
+                );
+            }
+            continue;
+        }
+        match telegram.send_message(notification.chat_id, text).await {
+            Ok(sent) => {
+                if let Err(error) = store.insert_message(
+                    &notification.lane_id,
+                    Some(&notification.run_id),
+                    "outbound",
+                    "telegram_progress_timed_out",
+                    Some(sent.message_id),
+                    Some(text),
+                    None,
+                ) {
+                    warn!(
+                        "failed to record stalled progress notice {}: {error:#}",
+                        notification.run_id
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    "failed to notify stalled progress {}: {error:#}",
+                    notification.run_id
                 );
             }
         }
@@ -2642,6 +2956,7 @@ mod tests {
         IncomingMessage, InlineKeyboardButton, SavedTelegramAttachment, SendMessageResult,
         TelegramAttachment, TelegramControlCommand, TelegramRemoteFile,
     };
+    use rusqlite::{Connection, params};
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
@@ -2797,9 +3112,24 @@ mod tests {
 
     #[test]
     fn runtime_failure_message_prompts_retry() {
-        let message = format_runtime_failure_message();
+        let message = format_runtime_failure_message(&anyhow!("boom"));
         assert!(message.contains("失敗しました"));
         assert!(message.contains("再送"));
+    }
+
+    #[test]
+    fn runtime_failure_message_explains_resume_timeout() {
+        let message =
+            format_runtime_failure_message(&anyhow!("app-server `thread/resume` timed out"));
+        assert!(message.contains("戻れませんでした"));
+        assert!(message.contains("Codex App"));
+    }
+
+    #[test]
+    fn runtime_failure_message_explains_resume_run_timeout() {
+        let message = format_runtime_failure_message(&anyhow!("app-server resume run timed out"));
+        assert!(message.contains("時間内に終わりませんでした"));
+        assert!(message.contains("Codex App"));
     }
 
     #[test]
@@ -3719,7 +4049,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn running_app_server_lane_steers_followup_to_visible_pending_input() {
+    async fn running_app_server_lane_queues_followup_input() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let mut config = test_config();
@@ -3733,9 +4063,9 @@ mod tests {
             .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-1"))
             .expect("lane should update");
         let active_turns = ActiveTurnRegistry::default();
-        let (_guard, mut receiver) = active_turns.register("thread-1");
+        let _guard = active_turns.register("thread-1").0;
 
-        let handle = handle_message(
+        handle_message(
             &config,
             &store,
             &telegram,
@@ -3755,23 +4085,25 @@ mod tests {
                 control_command_override: None,
                 payload_json: "{}".to_owned(),
             },
-        );
-        tokio::pin!(handle);
-
-        let followup = tokio::select! {
-            result = &mut handle => panic!("handler ended before follow-up: {result:?}"),
-            followup = receiver.recv() => followup.expect("follow-up should become pending input"),
-        };
-        assert_eq!(followup.request.prompt, "use the shorter path");
-        let _ = followup.ack.send(Ok(()));
-        handle.await.expect("follow-up should steer");
+        )
+        .await
+        .expect("follow-up should queue");
         let sent_messages = telegram.sent_messages();
         assert_eq!(sent_messages.len(), 1);
-        assert!(sent_messages[0].text.contains("保留入力"));
+        assert!(
+            sent_messages[0]
+                .text
+                .contains("次の入力として受け付けました")
+        );
+        let queued = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("queue should be readable")
+            .expect("follow-up should be queued");
+        assert_eq!(queued.body_text, "use the shorter path");
     }
 
     #[tokio::test]
-    async fn running_app_server_lane_uses_bound_thread_for_visible_pending_input() {
+    async fn running_app_server_lane_queues_bound_thread_followup() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let mut config = test_config();
@@ -3797,9 +4129,9 @@ mod tests {
             })
             .expect("binding should save");
         let active_turns = ActiveTurnRegistry::default();
-        let (_guard, mut receiver) = active_turns.register("saved-thread");
+        let _guard = active_turns.register("saved-thread").0;
 
-        let handle = handle_message(
+        handle_message(
             &config,
             &store,
             &telegram,
@@ -3819,23 +4151,25 @@ mod tests {
                 control_command_override: None,
                 payload_json: "{}".to_owned(),
             },
-        );
-        tokio::pin!(handle);
-
-        let followup = tokio::select! {
-            result = &mut handle => panic!("handler ended before follow-up: {result:?}"),
-            followup = receiver.recv() => followup.expect("follow-up should become pending input"),
-        };
-        assert_eq!(followup.request.prompt, "keep going");
-        let _ = followup.ack.send(Ok(()));
-        handle.await.expect("follow-up should use bound thread");
+        )
+        .await
+        .expect("follow-up should queue");
         let sent_messages = telegram.sent_messages();
         assert_eq!(sent_messages.len(), 1);
-        assert!(sent_messages[0].text.contains("保留入力"));
+        assert!(
+            sent_messages[0]
+                .text
+                .contains("次の入力として受け付けました")
+        );
+        let queued = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("queue should be readable")
+            .expect("follow-up should be queued");
+        assert_eq!(queued.body_text, "keep going");
     }
 
     #[tokio::test]
-    async fn running_app_server_lane_prefers_live_turn_before_bound_thread() {
+    async fn running_app_server_lane_deduplicates_queued_followup() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let mut config = test_config();
@@ -3861,9 +4195,9 @@ mod tests {
             })
             .expect("binding should save");
         let active_turns = ActiveTurnRegistry::default();
-        let (_guard, mut receiver) = active_turns.register(&lane.lane_id);
+        let _guard = active_turns.register(&lane.lane_id).0;
 
-        let handle = handle_message(
+        handle_message(
             &config,
             &store,
             &telegram,
@@ -3883,23 +4217,44 @@ mod tests {
                 control_command_override: None,
                 payload_json: "{}".to_owned(),
             },
-        );
-        tokio::pin!(handle);
-
-        let followup = tokio::select! {
-            result = &mut handle => panic!("handler ended before follow-up: {result:?}"),
-            followup = receiver.recv() => followup.expect("follow-up should become pending input"),
-        };
-        assert_eq!(followup.request.prompt, "use this follow-up");
-        let _ = followup.ack.send(Ok(()));
-        handle.await.expect("follow-up should use live turn");
+        )
+        .await
+        .expect("first follow-up should queue");
+        handle_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            &active_turns,
+            77,
+            IncomingMessage {
+                update_id: 2,
+                chat_id: 10,
+                chat_type: "private".to_owned(),
+                sender_id: Some(77),
+                text: "use this follow-up".to_owned(),
+                attachments: Vec::new(),
+                telegram_message_id: 501,
+                thread_key: "dm".to_owned(),
+                callback_query_id: None,
+                control_command_override: None,
+                payload_json: "{}".to_owned(),
+            },
+        )
+        .await
+        .expect("duplicate follow-up should be reported");
         let sent_messages = telegram.sent_messages();
-        assert_eq!(sent_messages.len(), 1);
-        assert!(sent_messages[0].text.contains("保留入力"));
+        assert_eq!(sent_messages.len(), 2);
+        assert!(
+            sent_messages[0]
+                .text
+                .contains("次の入力として受け付けました")
+        );
+        assert!(sent_messages[1].text.contains("すでに受け付けています"));
     }
 
     #[tokio::test]
-    async fn running_app_server_lane_rejects_stale_stored_turn_without_live_reader() {
+    async fn running_app_server_lane_queues_when_stored_turn_has_no_live_reader() {
         let dir = tempdir().expect("tempdir should be created");
         let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
         let mut config = test_config();
@@ -3945,18 +4300,26 @@ mod tests {
             },
         )
         .await
-        .expect("stale turn should produce a user reply");
+        .expect("stale turn should queue a follow-up");
 
         let sent_messages = telegram.sent_messages();
         assert_eq!(sent_messages.len(), 1);
-        assert!(sent_messages[0].text.contains("再接続できません"));
-        assert!(!sent_messages[0].text.contains("追加しました"));
+        assert!(
+            sent_messages[0]
+                .text
+                .contains("次の入力として受け付けました")
+        );
         let lane = store
             .find_lane(10, "dm")
             .expect("lane query")
             .expect("lane should exist");
-        assert_eq!(lane.state, LaneState::WaitingReply);
-        assert_eq!(lane.active_turn_id, None);
+        assert_eq!(lane.state, LaneState::Running);
+        assert_eq!(lane.active_turn_id.as_deref(), Some("turn-1"));
+        let queued = store
+            .claim_next_followup_input(&lane.lane_id)
+            .expect("queue should be readable")
+            .expect("follow-up should be queued");
+        assert_eq!(queued.body_text, "continue this");
     }
 
     fn saved_attachment(
@@ -4227,6 +4590,114 @@ mod tests {
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].message_id, 88);
         assert!(edits[0].text.contains("invalidated by a bridge restart"));
+        assert!(telegram.sent_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn restart_invalidation_edits_existing_progress_message_and_marks_lane_waiting_reply() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(32, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        let run = store
+            .insert_run(NewRun {
+                lane_id: lane.lane_id.clone(),
+                run_kind: "restart".to_owned(),
+            })
+            .expect("run should insert");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-1"))
+            .expect("lane should update");
+        store
+            .insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_progress",
+                Some(89),
+                Some("処理を開始しました。完了したら、このメッセージを更新します。"),
+                None,
+            )
+            .expect("progress should insert");
+
+        invalidate_running_progress_messages_for_restart(&store, &telegram).await;
+
+        let lane = store
+            .find_lane(32, "dm")
+            .expect("lane should load")
+            .expect("lane should exist");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id, None);
+        assert_eq!(lane.active_turn_id, None);
+
+        let edits = telegram.edited_messages();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].message_id, 89);
+        assert!(edits[0].text.contains("bridge を再起動したため"));
+        assert!(telegram.sent_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stalled_resume_monitor_edits_existing_progress_message_and_marks_lane_waiting_reply() {
+        let dir = tempdir().expect("tempdir should be created");
+        let db_path = dir.path().join("bridge.db");
+        let store = Store::open(&db_path).expect("store should open");
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(33, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        let run = store
+            .insert_run(NewRun {
+                lane_id: lane.lane_id.clone(),
+                run_kind: "resume".to_owned(),
+            })
+            .expect("run should insert");
+        store
+            .update_lane_state(&lane.lane_id, LaneState::Running, Some("thread-1"))
+            .expect("lane should update");
+        store
+            .insert_message(
+                &lane.lane_id,
+                Some(&run.run_id),
+                "outbound",
+                "telegram_progress",
+                Some(90),
+                Some("前回の続きとして処理しています。完了したら、このメッセージを更新します。"),
+                None,
+            )
+            .expect("progress should insert");
+
+        expire_stalled_app_server_resume_runs(&store, &telegram).await;
+
+        let lane = store
+            .find_lane(33, "dm")
+            .expect("lane should load")
+            .expect("lane should exist");
+        assert_eq!(lane.state, LaneState::Running);
+        assert!(telegram.edited_messages().is_empty());
+
+        Connection::open(&db_path)
+            .expect("sqlite should open")
+            .execute(
+                "UPDATE runs SET started_at_ms = 0 WHERE run_id = ?1",
+                params![run.run_id],
+            )
+            .expect("run should become old");
+        expire_stalled_app_server_resume_runs(&store, &telegram).await;
+
+        let lane = store
+            .find_lane(33, "dm")
+            .expect("lane should load")
+            .expect("lane should exist");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        assert_eq!(lane.codex_session_id.as_deref(), Some("thread-1"));
+
+        let edits = telegram.edited_messages();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].message_id, 90);
+        assert!(edits[0].text.contains("時間内に終わりませんでした"));
         assert!(telegram.sent_messages().is_empty());
     }
 

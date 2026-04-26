@@ -326,12 +326,12 @@ The decision is returned to the same Codex turn.
 
 > Q. What happens if I send another message while Codex is still working?
 >
-> A. Text messages are sent as pending follow-up input if the bridge still sees the running turn.
-> Codex treats the text as input that follows the current work.
-> Attachments cannot become pending input while a turn is running.
+> A. Text messages are accepted as the next input.
+> `remotty` saves them under `%APPDATA%\remotty` and runs them after the current work finishes.
+> Duplicate Telegram messages are ignored.
+> Attachments cannot be queued while Codex is working.
 > Send attachments after the current turn finishes.
-> If the bridge was restarted, the running turn may not be recoverable.
-> In that case, send the message again after the current turn finishes.
+> If queued input fails, `remotty` sends a short failure message back to Telegram.
 
 > Q. What if the token may have leaked?
 >

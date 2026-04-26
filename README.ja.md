@@ -23,6 +23,7 @@ Telegram bot へメッセージを送ります。
 - Windows PC 上の Codex と Telegram bot をつなぐ
 - Telegram チャットから続けたい Codex スレッドを選ぶ
 - Telegram のメッセージをそのスレッドへ渡す
+- Codex の処理中に届いたテキストを後続入力として受け付ける
 - Codex の返答を同じ Telegram チャットへ返す
 - 承認待ちを Telegram へ中継する
 - bot token を Windows の保護領域へ保存する
