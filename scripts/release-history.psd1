@@ -349,5 +349,16 @@
                 "Added tests for rejected steer responses, stale stored turns, and run ownership."
             )
         }
+        @{
+            Version = "0.2.13"
+            Commit = "529c21ff2bbfcc385f1ac45d30fa91ab017169b2"
+            Title = "CLI Telegram channel startup"
+            Notes = @(
+                "Persisted Telegram follow-up input so messages sent while Codex is working are queued for the next turn."
+                "Printed a CLI-visible Telegram listening banner when the bridge starts successfully."
+                "Made the supported Telegram flow Codex CLI plus a running remotty process, with Codex App setup kept optional."
+                "Removed the duplicate manual Codex thread selection step from the public Telegram quickstart."
+            )
+        }
     )
 }
