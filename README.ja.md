@@ -23,7 +23,7 @@ Telegram bot へメッセージを送ります。
 - Windows PC 上の Codex と Telegram bot をつなぐ
 - Telegram チャットから続けたい Codex スレッドを選ぶ
 - Telegram のメッセージをそのスレッドへ渡す
-- Codex の処理中に届いたテキストを後続入力として受け付ける
+- Codex が処理中の間に送ったテキストを、次の入力としてキューに溜める
 - Codex の返答を同じ Telegram チャットへ返す
 - 承認待ちを Telegram へ中継する
 - bot token を Windows の保護領域へ保存する
@@ -36,7 +36,7 @@ Telegram bot へメッセージを送ります。
 ## 必要なもの
 
 - Windows 10 または Windows 11
-- Codex App と Codex CLI
+- `Codex CLI`
 - Node.js と `npm`
 - `@BotFather` で作った Telegram bot token
 
@@ -59,37 +59,31 @@ Telegram bot を作る前に試す場合は、
 npm install -g remotty
 ```
 
-その後、Codex App の Plugins 画面を開きます。
-画面内のプラグイン元で `remotty local plugins` を選びます。
-その中から `remotty` を入れます。
-
-インストール済みのプラグインが反応しない場合も、今のチャットは閉じません。
-その時は、クイックスタートの PowerShell 手順で進めます。
+その後、利用したいプロジェクトで [Telegram クイックスタート](docs/telegram-quickstart.ja.md) に沿って進めます。
 
 ## 主なコマンド
 
-Codex App では、先に `remotty` プラグインを入れます。
-その後、通常のチャットとして次のように依頼します。
+PowerShell で実行します。
 
-```text
-Telegram bot token を保存して
-このプロジェクトを remotty に登録して
-ブリッジを起動して
-Telegram に表示された pairing code でペアリングして
-Telegram の allowlist を有効化して
-状態を確認して
-Codex スレッドを表示して
+```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
+remotty config workspace upsert --config $configPath --path (Get-Location).Path
+remotty telegram configure --config $configPath
+remotty --config $configPath
+remotty telegram access-pair <code> --config $configPath
+remotty telegram policy allowlist --config $configPath
+remotty telegram sessions --config $configPath
 ```
 
-bot token は、`remotty` が開く PowerShell にだけ入力します。
-Codex App のチャット欄には貼らないでください。
+`remotty --config $configPath` が成功すると、ターミナルに
+`Listening for Telegram channel messages from: remotty:telegram` と表示されます。
+Telegram から使う間は、そのターミナルを開いたままにしてください。
 
-Codex CLI を使う場合は、PowerShell から同じ設定を行えます。
-どちらの場合も、ブリッジはローカルの `codex` 実行ファイルを呼びます。
-PowerShell のコマンドは、クイックスタートに載せています。
-Codex App のプラグインが反応しない場合も、同じ PowerShell 手順を使います。
+Codex App も使う場合は、同梱のプラグインで設定作業を補助できます。
+プラグインは任意です。
+サポート対象の Telegram 連携は、上記の `Codex CLI` と `remotty` の PowerShell コマンドを使うフローです。
 
-Telegram で使います。
+Telegram から送るコマンドは次のとおりです。
 
 ```text
 /help
@@ -109,9 +103,9 @@ Telegram で使います。
 
 ## 安全な情報の扱い
 
-- `remotty` プラグインで bot token を保護領域へ保存する
+- `remotty telegram configure` で bot token を保護領域へ保存する
 - `remotty` 専用の Telegram bot を使う
-- token を Codex App のチャット欄へ貼らない
+- token をチャット、issue、PR へ貼らない
 - token や `api.telegram.org/bot...` の URL を issue へ貼らない
 - プロジェクトファイルと `%APPDATA%\remotty` の状態を分ける
 

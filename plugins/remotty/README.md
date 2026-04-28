@@ -1,7 +1,13 @@
 # remotty plugin
 
-This local plugin wraps the `remotty` bridge with Codex skills.
+This local plugin is optional.
+The supported Telegram flow is the Codex CLI quickstart in the project README.
+The plugin only exposes the same setup tasks as Codex App skills for Codex App users.
+The bridge itself talks to your local `codex` CLI.
+
 In Codex App, type `@`, select `remotty`, then describe the setup task.
+Codex CLI users should follow the [Telegram Quickstart](../../docs/telegram-quickstart.md)
+directly from PowerShell instead.
 
 Use it for:
 

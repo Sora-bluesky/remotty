@@ -6,6 +6,7 @@ description: Check remotty bridge status. Use when the user asks whether remotty
 # remotty status
 
 Check local status.
+The supported Telegram flow is for Codex CLI.
 
 1. Run:
 
@@ -26,6 +27,19 @@ $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram policy allowlist --config $configPath
 ```
 
-4. Summarize whether a bridge is likely running.
-5. State whether the allowlist check passed.
-6. Do not print secrets.
+4. Run the live environment check:
+
+```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
+remotty telegram live-env-check --config $configPath
+```
+
+5. Summarize whether a bridge is likely running.
+6. State whether the allowlist check passed.
+7. If the bridge was just started, tell the user to look for:
+
+```text
+Listening for Telegram channel messages from: remotty:telegram
+```
+
+8. Do not print secrets.

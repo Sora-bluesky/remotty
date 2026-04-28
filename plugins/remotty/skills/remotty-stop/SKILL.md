@@ -6,6 +6,7 @@ description: Stop a running remotty bridge or service. Use when the user asks to
 # remotty stop
 
 Stop the bridge or identify the process to stop.
+The supported Telegram flow is for Codex CLI.
 
 1. Try:
 

@@ -207,10 +207,18 @@ pub async fn run_console(config: Config) -> Result<()> {
             ctrl_c_token.cancel();
         }
     });
-    run_with_shutdown(config, shutdown).await
+    run_with_shutdown_inner(config, shutdown, true).await
 }
 
 pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> Result<()> {
+    run_with_shutdown_inner(config, shutdown, false).await
+}
+
+async fn run_with_shutdown_inner(
+    config: Config,
+    shutdown: CancellationToken,
+    announce_console: bool,
+) -> Result<()> {
     let token = load_secret(&config.telegram.token_secret_ref)
         .unwrap_or_else(|_| std::env::var("TELEGRAM_BOT_TOKEN").unwrap_or_default());
     if token.is_empty() {
@@ -227,6 +235,9 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
     let poller = TelegramPoller::acquire(telegram.clone()).await?;
     let store = Store::open(&config.storage.db_path)?;
     seed_admin_senders(&store, &config.telegram.admin_sender_ids)?;
+    if announce_console {
+        println!("{}", format_channel_startup_message(&config, poller.bot()));
+    }
     let codex = CodexRunner::new(config.codex.clone());
     let active_turns = ActiveTurnRegistry::default();
     invalidate_running_progress_messages_for_restart(&store, &telegram).await;
@@ -318,6 +329,41 @@ pub async fn run_with_shutdown(config: Config, shutdown: CancellationToken) -> R
         sleep(Duration::from_millis(250)).await;
     }
     Ok(())
+}
+
+fn format_channel_startup_message(
+    config: &Config,
+    bot: &crate::telegram::TelegramBotInfo,
+) -> String {
+    let bot_name = bot
+        .username
+        .as_deref()
+        .map(|username| format!("@{username}"))
+        .unwrap_or_else(|| format!("bot id {}", bot.id));
+    let workspaces = config
+        .workspaces
+        .iter()
+        .map(|workspace| format!("{}={}", workspace.id, workspace.path.display()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    [
+        "Listening for Telegram channel messages from: remotty:telegram".to_owned(),
+        format!("Telegram bot: {bot_name}"),
+        format!(
+            "Codex transport: {}",
+            codex_transport_name(config.codex.transport)
+        ),
+        format!("Workspaces: {workspaces}"),
+        "Keep this `remotty` process running while you use Telegram.".to_owned(),
+    ]
+    .join("\n")
+}
+
+fn codex_transport_name(transport: CodexTransport) -> &'static str {
+    match transport {
+        CodexTransport::Exec => "exec",
+        CodexTransport::AppServer => "app_server",
+    }
 }
 
 async fn handle_message(
@@ -4401,6 +4447,24 @@ mod tests {
                 test_workspace("docs", "C:/docs"),
             ],
         }
+    }
+
+    #[test]
+    fn channel_startup_message_names_telegram_source_and_workspaces() {
+        let mut config = test_config();
+        config.codex.transport = crate::config::CodexTransport::AppServer;
+        let bot = crate::telegram::TelegramBotInfo {
+            id: 123,
+            username: Some("remotty_bot".to_owned()),
+        };
+
+        let message = format_channel_startup_message(&config, &bot);
+
+        assert!(message.contains("Listening for Telegram channel messages from: remotty:telegram"));
+        assert!(message.contains("Telegram bot: @remotty_bot"));
+        assert!(message.contains("Codex transport: app_server"));
+        assert!(message.contains("main=C:/workspace"));
+        assert!(message.contains("docs=C:/docs"));
     }
 
     fn insert_pending_approval_request(

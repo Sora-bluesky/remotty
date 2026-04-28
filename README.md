@@ -38,7 +38,7 @@ that is available on your Windows PC.
 ## Requirements
 
 - Windows 10 or Windows 11
-- Codex App and Codex CLI
+- Codex CLI
 - Node.js and `npm`
 - A Telegram bot token from `@BotFather`
 
@@ -63,35 +63,30 @@ Run this in a normal user PowerShell when you want the latest published
 npm install -g remotty
 ```
 
-Then open the Codex App Plugins screen.
-Choose `remotty local plugins` as the plugin source in that screen.
-Install `remotty` from that source.
-
-If the installed plugin does not respond in chat, keep the current chat open.
-Then use the PowerShell fallback in the quickstart.
+Then follow the [Telegram Quickstart](docs/telegram-quickstart.md) from the
+project you want to use.
 
 ## Main Commands
 
-If you use Codex App, install the `remotty` plugin first.
-Then ask for the task in normal chat:
+Run these from PowerShell:
 
-```text
-Store the Telegram bot token
-Register this project with remotty
-Start the bridge
-Pair with the code shown in Telegram
-Lock down Telegram access to the allowlist
-Check status
-List Codex threads
+```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
+remotty config workspace upsert --config $configPath --path (Get-Location).Path
+remotty telegram configure --config $configPath
+remotty --config $configPath
+remotty telegram access-pair <code> --config $configPath
+remotty telegram policy allowlist --config $configPath
+remotty telegram sessions --config $configPath
 ```
 
-Enter the bot token only in the PowerShell window that `remotty` opens.
-Do not paste the token into Codex App chat.
+When `remotty --config $configPath` succeeds, the terminal prints
+`Listening for Telegram channel messages from: remotty:telegram`.
+Keep that terminal open while you use Telegram.
 
-If you use Codex CLI, run the same setup from PowerShell.
-The bridge calls the local `codex` executable in both cases.
-See the quickstart for the PowerShell commands.
-Use the same PowerShell commands if the Codex App plugin does not respond.
+If you also use Codex App, the bundled plugin can help with setup tasks.
+The plugin is optional. The supported Telegram flow is the Codex CLI flow above:
+Codex CLI plus the `remotty` PowerShell commands.
 
 Run these in Telegram:
 
@@ -113,9 +108,9 @@ If a title also looks like another thread's `ID`, use the shown `ID`.
 
 ## Security
 
-- Use the `remotty` plugin so bot tokens stay in Windows protected storage.
+- Store bot tokens with `remotty telegram configure` so they stay in Windows protected storage.
 - Use a dedicated Telegram bot for `remotty`.
-- Do not paste bot tokens into Codex App chat.
+- Do not paste bot tokens into chat, issues, or pull requests.
 - Do not paste bot tokens or `api.telegram.org/bot...` URLs into issues.
 - Keep project files separate from `%APPDATA%\remotty` runtime state.
 

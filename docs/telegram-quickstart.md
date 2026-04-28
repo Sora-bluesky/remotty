@@ -1,19 +1,30 @@
 # Telegram Quickstart
 
-This guide sets up `remotty` so Telegram can send messages to a Codex thread
-on your Windows PC.
+This guide sets up `remotty` for Codex CLI on Windows.
+`remotty` does not type into a Codex App window.
+It talks to local Codex through the local `codex` command.
 
 ## How It Works
 
-1. You run `remotty` on your Windows PC.
-2. You send a message to your Telegram bot.
-3. `remotty` sends that message to the Codex thread you selected.
-4. Codex replies, and `remotty` sends the reply back to Telegram.
+1. You start Codex CLI in the project you want to work on.
+2. You start `remotty` in PowerShell with the same Windows user.
+3. `remotty` prints a channel-style startup message.
+4. You send a message to your Telegram bot.
+5. `remotty` sends that message to the selected Codex thread.
+6. Codex replies, and `remotty` sends the reply back to Telegram.
+
+When startup succeeds, the `remotty` terminal shows:
+
+```text
+Listening for Telegram channel messages from: remotty:telegram
+```
+
+Keep that terminal open while you use Telegram.
 
 ## What You Need
 
 - Windows 10 or Windows 11
-- Codex App and Codex CLI
+- Codex CLI
 - Node.js and `npm`
 - Telegram
 - A dedicated Telegram bot from `@BotFather`
@@ -32,114 +43,37 @@ Save the config path in a variable:
 $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
-The PowerShell examples below reuse `$configPath`.
+The examples below reuse `$configPath`.
 
-## Where To Type Commands And Where Data Is Stored
+## 2. Enter Your Project
 
-In Codex App, type `@` in the chat box.
-Select `remotty` from the suggestions.
-Then describe the setup task in plain language.
-Do not type those plugin requests in PowerShell.
-This guide explicitly says when a command goes to Telegram.
-
-The bot token is not saved in your project repository.
-It is saved in Windows protected storage.
-The protected file lives under `%LOCALAPPDATA%\remotty\secrets`.
-By default, the file name is `remotty-telegram-bot.bin`.
-`remotty` config and runtime state are saved under `%APPDATA%\remotty`.
-
-Register the project while the target project is open.
-Token storage and bridge startup do not write to the repository.
-For the clearest setup, keep using the same project while you run them.
-`remotty` does not create files in the project root.
-In normal use, it does not add anything to commit.
-
-## How Often Each Step Is Needed
-
-Do these once for the same Windows user:
-
-- Install `remotty`
-- Install the local plugin in Codex App
-- Prepare a Telegram bot, unless you already have one
-- Store the bot token
-- Pair your Telegram account
-
-Do these when you use a new project:
-
-- Open or enter the project
-- Register that project with `remotty`
-
-Do this for each Telegram chat:
-
-- Bind a Telegram chat to a Codex thread
-
-Check these when you use it:
-
-- Confirm the bridge is running
-- Confirm the Telegram chat points to the intended Codex thread
-- Send a message from Telegram
-
-## 2. Install the Local Plugin (Once)
-
-Codex App users can use the local plugin.
-
-In the Codex App Plugins view:
-
-1. Select `remotty local plugins` in the plugin source selector.
-2. Click the add button on the `remotty` plugin.
-3. Confirm the install dialog.
-
-After selecting `remotty local plugins`, `remotty` appears in the plugin list.
-
-![Codex plugin list with remotty local plugins selected](assets/quickstart/codex-plugin-marketplace-select.png)
-
-Click the add button, then confirm the install dialog.
-
-![Codex plugin install dialog for remotty](assets/quickstart/codex-plugin-install-remotty.png)
-
-Codex CLI users can skip this step.
-Use the PowerShell commands shown below instead.
-
-## 3. Open or Enter Your Project (When You Use a New Project)
-
-Use the project you want to continue from Telegram.
-You do not need to use the same project every time.
-
-If you use Codex App, open that project in the app.
-
-If you use Codex CLI, enter the project folder in PowerShell:
+Use the project you want to continue from Telegram:
 
 ```powershell
 Set-Location C:\path\to\your\project
 ```
 
-## 4. Register This Project (Once Per Project)
+Start Codex CLI from that project when you want a visible local session:
 
-In Codex App, use a normal chat request while the target project is open.
-This requires the `remotty` plugin to be installed.
-
-```text
-Register this project with remotty
+```powershell
+codex
 ```
 
-If the plugin does not respond, use the PowerShell command below.
+## 3. Register This Project
 
-Codex CLI users run this from the project folder:
+Run this once per project:
 
 ```powershell
 remotty config workspace upsert --config $configPath --path (Get-Location).Path
 ```
 
-This saves the project to the config under `%APPDATA%\remotty`.
-It does not write files into your project repository.
-It also does not create `.remotty` or other files in the project root.
+This saves the project to `%APPDATA%\remotty\bridge.toml`.
+It does not create files in the project root.
 If you want to verify that, run `git status`.
 
-## 5. Prepare a Telegram Bot (Once)
+## 4. Prepare a Telegram Bot
 
-This is a one-time setup.
 If you already have a dedicated `remotty` bot, use its token.
-
 Only create a new bot when you do not have one yet:
 
 1. Open `@BotFather` in Telegram.
@@ -150,82 +84,49 @@ Only create a new bot when you do not have one yet:
 
 Do not post the token in chat, screenshots, issues, or pull requests.
 
-## 6. Store the Bot Token (Once, Or When Replacing It)
+## 5. Store the Bot Token
 
-In Codex App, ask:
-
-```text
-Store the Telegram bot token
-```
-
-This does not save the token in the open repository.
-After you store it once, the same Windows user can reuse it.
-Run this again only when you want to replace the token.
-
-`remotty` opens a PowerShell window for hidden token input.
-Enter the token only in that PowerShell window.
-Do not paste the token into Codex App chat.
-
-Codex CLI users run:
+Run:
 
 ```powershell
 remotty telegram configure --config $configPath
 ```
 
 Paste the token when prompted.
-The command stores it in Windows protected storage.
-It does not print the token back.
+The command stores it in Windows protected storage and does not print it back.
 The encrypted file is under `%LOCALAPPDATA%\remotty\secrets`.
 The default file name is `remotty-telegram-bot.bin`.
-The storage is tied to your Windows user.
-It is reused even when you work in another project.
 
-## 7. Start the Bridge (When You Use It)
+## 6. Start the Telegram Channel
 
-In Codex App, ask:
-
-```text
-Start the bridge
-```
-
-Startup uses `%APPDATA%\remotty\bridge.toml`.
-It does not put runtime files in the open repository:
-
-Codex CLI users run:
+Run this when you want Telegram connected:
 
 ```powershell
-# Start the foreground bridge.
 remotty --config $configPath
 ```
 
-Keep the bridge running while you use Telegram.
-If it stops, the bot cannot reply.
-
-## 8. Pair Telegram (Once)
-
-Send any message to your bot in a private Telegram chat.
-
-The bot replies with a `remotty pairing code`.
-In Codex App, ask:
+Startup uses `%APPDATA%\remotty\bridge.toml`.
+When startup succeeds, confirm that the terminal shows:
 
 ```text
-Pair with code <code>
+Listening for Telegram channel messages from: remotty:telegram
 ```
 
-Codex CLI users run:
+It also shows the Telegram bot, Codex transport, and registered workspaces.
+Keep this process running while you use Telegram.
+
+## 7. Pair Telegram
+
+Send any message to your bot in a private Telegram chat.
+The bot replies with a `remotty pairing code`.
+
+Run:
 
 ```powershell
 remotty telegram access-pair <code> --config $configPath
 ```
 
-Then check the allowlist.
-In Codex App, ask:
-
-```text
-Lock down Telegram access to the allowlist
-```
-
-Codex CLI users run:
+Then check the allowlist:
 
 ```powershell
 remotty telegram policy allowlist --config $configPath
@@ -233,15 +134,9 @@ remotty telegram policy allowlist --config $configPath
 
 This prevents other Telegram users from controlling your local Codex setup.
 
-## 9. Select a Codex Thread (Per Telegram Chat)
+## 8. Select a Codex Thread
 
-In Codex App, ask:
-
-```text
-List Codex threads
-```
-
-Codex CLI users run:
+List available Codex threads:
 
 ```powershell
 remotty telegram sessions --config $configPath
@@ -250,7 +145,11 @@ remotty telegram sessions --config $configPath
 Choose the thread you want Telegram to continue.
 Then send this in the target Telegram chat:
 
-For example, if the thread title is `Start workspace session`:
+```text
+/remotty-sessions <thread title or ID>
+```
+
+For example:
 
 ```text
 /remotty-sessions Start workspace session
@@ -261,12 +160,8 @@ No quotes are needed.
 Matching is case-insensitive.
 `remotty` tries exact `ID`, exact title, `ID` prefix, then a title substring match.
 If more than one thread matches, use the shown `ID`.
-If a title also looks like another thread's `ID`, `remotty` asks you to choose by `ID`.
 
-This binding is stored under `%APPDATA%\remotty`.
-It is not written into your project repository.
-
-## 10. Send a Test Message
+## 9. Send a Test Message
 
 In Telegram, send:
 
@@ -280,123 +175,50 @@ The reply appears in Telegram.
 ## Approval Prompts
 
 When Codex asks for approval, `remotty` posts the prompt to Telegram.
+Only allowed senders can approve.
 
-You can press `Approve` or `Deny`.
-You can also type:
+## Connection Q&A
 
-```text
-/approve <request_id>
-/deny <request_id>
-```
-
-The decision is returned to the same Codex turn.
-
-## Q&A
-
-### Security Q&A
-
-> Q. Does project registration create files in my project?
+> Q. How do I know Telegram is connected?
 >
-> A. No. It saves configuration to `%APPDATA%\remotty\bridge.toml`. It does not create `.remotty` or other files in the project root. If you want to verify this, run `git status` after the command.
+> A. The `remotty` terminal must show `Listening for Telegram channel messages from: remotty:telegram`.
+> If that line is missing, restart `remotty --config $configPath`.
 
-> Q. Where is the bot token stored?
+> Q. Does `remotty` require Codex App?
 >
-> A. It is stored in Windows protected storage under `%LOCALAPPDATA%\remotty\secrets`. The default file name is `remotty-telegram-bot.bin`. It is not stored in your project repository, GitHub, or a Telegram chat.
+> A. No. This flow is for Codex CLI. `remotty` uses the local `codex` command.
 
-> Q. Is the bot token sent to OpenAI or another public server?
+> Q. Does `remotty` write files into my project?
 >
-> A. `remotty` uses the token to connect to the Telegram API. It does not need to send the token to OpenAI. Do not paste the token into issues, pull requests, or screenshots.
-
-> Q. Does `remotty` expose a public webhook server?
->
-> A. No. The normal setup polls Telegram from your Windows PC. You do not need to open a router port.
-
-> Q. Can anyone control my Codex session?
->
-> A. No. Only paired senders are allowed. After pairing, ask the `remotty` plugin to lock down access to the allowlist.
-> This keeps access limited to configured senders.
-
-> Q. Is approving from Telegram safe?
->
-> A. Only allowed senders can approve. Approval still continues local Codex work, so allow only Telegram accounts you trust.
-
-> Q. Can I use the same bot across projects?
->
-> A. Yes. The bot token is stored for your Windows user. Project registration and Telegram chat bindings are separate.
-
-> Q. What happens if I send another message while Codex is still working?
->
-> A. Text messages are accepted as the next input.
-> `remotty` saves them under `%APPDATA%\remotty` and runs them after the current work finishes.
-> Duplicate Telegram messages are ignored.
-> Attachments cannot be queued while Codex is working.
-> Send attachments after the current turn finishes.
-> If queued input fails, `remotty` sends a short failure message back to Telegram.
-
-> Q. What if the token may have leaked?
->
-> A. Regenerate it with `@BotFather`. Then ask the `remotty` plugin to save the new token.
-
-### Connection Q&A
-
-> Q. The `remotty` plugin is installed, but `@remotty` does not appear in chat.
->
-> A. Keep the current chat open.
-> You do not need an `@remotty` mention.
-> Try the same request as normal chat text.
-> If that does not trigger the plugin, use PowerShell.
-> Move to the project folder first:
->
-> ```powershell
-> Set-Location C:\path\to\your-project
-> ```
->
-> Then run:
->
-> ```powershell
-> remotty config workspace upsert --config $configPath --path (Get-Location).Path
-> ```
->
-> This registers the project without creating files in the project root.
-> Then continue the remaining setup from PowerShell.
-> If the plugin starts responding later in Codex App, you can return there.
+> A. No. Configuration and runtime state are under `%APPDATA%\remotty`.
 
 > Q. The bot does not reply.
 >
-> A. First confirm the bridge is still running. In Codex App, ask the `remotty` plugin to check status. In PowerShell, run `remotty service status` and `remotty telegram live-env-check --config $configPath`. If the webhook status is `webhook-configured`, switch the bot back to polling.
+> A. First confirm the `remotty` terminal is still running.
+> Then run `remotty telegram live-env-check --config $configPath`.
+> If the webhook status is `webhook-configured`, switch the bot back to polling.
 
-> Q. I get a polling conflict.
+> Q. Telegram reports a polling conflict.
 >
-> A. Only one process can poll the same Telegram bot. On Windows, list likely processes:
+> A. Only one process can poll the same Telegram bot.
+> Stop the other `remotty` process, live smoke run, or bot worker.
 
-```powershell
-Get-Process remotty, codex -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path
-```
+## Security Q&A
 
-> Stop the process that reads the same bot:
-
-```powershell
-Stop-Process -Id <PID>
-```
-
-### Pairing Q&A
-
-> Q. The pairing code does not work.
+> Q. Where is the bot token stored?
 >
-> A. Send the message in a private chat with the bot. Use the newest code. Ask the `remotty` plugin to pair before the code expires.
+> A. It is stored in Windows protected storage under `%LOCALAPPDATA%\remotty\secrets`.
+> It is not stored in your project repository, GitHub, or Telegram chat.
 
-### Thread Selection Q&A
-
-> Q. No Codex threads appear.
+> Q. Should I paste the token into Codex CLI?
 >
-> A. Update Codex CLI, then try again. Start at least one Codex App or Codex CLI thread. Ask the `remotty` plugin to list threads again.
+> A. No. Paste it only into the prompt opened by `remotty telegram configure`.
 
-## Related
+> Q. Can anyone who finds the bot use my Codex setup?
+>
+> A. No. Only paired senders on the allowlist are accepted.
 
-- [Fakechat Demo](fakechat-demo.md)
+## Related Docs
+
 - [Advanced CLI Mode](exec-transport.md)
 - [Upgrade Notes](upgrading.md)
-
-Note: if your code and shell live on an SSH host, Codex Remote connections may
-also be useful. `remotty` is for returning to Codex work on your Windows PC
-from Telegram.
