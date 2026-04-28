@@ -145,7 +145,7 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
     assert!(quickstart.contains("npm install -g remotty"));
-    assert!(readme.contains("Codex thread"));
+    assert!(readme.contains("Codex CLI session you connected"));
     assert!(readme.contains("Telegram Quickstart"));
     assert!(readme.contains("Advanced CLI Mode"));
     assert!(quickstart.contains("Listening for Telegram channel messages from: remotty:telegram"));
@@ -171,20 +171,13 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     let upgrading = std::fs::read_to_string(repo_root().join("docs").join("upgrading.md"))?;
     let upgrading_ja = std::fs::read_to_string(repo_root().join("docs").join("upgrading.ja.md"))?;
 
-    assert!(readme_ja.contains("Codex スレッド"));
+    assert!(readme_ja.contains("連携した `Codex CLI` セッション"));
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(!readme_ja.contains("docs/development.ja.md"));
-    assert!(quickstart.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart.contains("No quotes are needed."));
-    assert!(quickstart.contains("Matching is case-insensitive."));
-    assert!(
-        quickstart.contains("exact `ID`, exact title, `ID` prefix, then a title substring match")
-    );
-    assert!(quickstart.contains("If more than one thread matches, use the shown `ID`."));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Start Codex CLI from that project"));
+    assert!(quickstart.contains("Codex CLI session for this project is the Telegram target"));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains(r"%LOCALAPPDATA%\remotty\secrets"));
@@ -201,14 +194,11 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(!quickstart.contains("writable_roots"));
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
-    assert!(quickstart_ja.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart_ja.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart_ja.contains("引用符は不要です"));
-    assert!(quickstart_ja.contains("大文字と小文字は区別しません"));
-    assert!(quickstart_ja.contains("`ID`、完全な名前、`ID` の先頭、名前の一部"));
-    assert!(quickstart_ja.contains("複数のスレッドが一致した場合は、表示された `ID` を使います"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
     assert!(quickstart_ja.contains("手元の画面でセッションを確認したい場合"));
+    assert!(
+        quickstart_ja.contains("このプロジェクトの `Codex CLI` セッションが Telegram の連携先")
+    );
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains(r"%LOCALAPPDATA%\remotty\secrets"));

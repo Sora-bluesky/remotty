@@ -15,13 +15,8 @@
 transport = "app_server"
 ```
 
-これで、Telegram から選択済みの Codex スレッドを続けられます。
-スレッドは次で選びます。
-
-```text
-/remotty-sessions
-/remotty-sessions <スレッド名または ID>
-```
+これで、そのプロジェクトで起動した `remotty --config $configPath` のプロセスを通じて、
+Telegram から `Codex CLI` セッションを続けられます。
 
 ## 設定が `exec` の場合
 

@@ -12,7 +12,7 @@ already use.
 There is no new mobile app to install.
 
 You send a message to your Telegram bot. `remotty` receives it on your Windows
-PC, sends it to the selected Codex thread, and returns the reply to the same
+PC, sends it to the Codex CLI session you connected, and returns the reply to the same
 Telegram chat.
 
 `remotty` does not expose a public webhook server. It also does not type into
@@ -22,8 +22,8 @@ command.
 ## What It Does
 
 - Connects a Telegram bot to Codex on your Windows PC.
-- Lets a Telegram chat choose the Codex thread to continue.
-- Sends Telegram messages to that thread.
+- Connects Telegram to the Codex CLI session you start for the project.
+- Sends Telegram messages to that session.
 - Queues text you send while Codex is already working.
 - Returns Codex replies to the same Telegram chat.
 - Relays approval prompts to Telegram.
@@ -48,8 +48,8 @@ Rust is only needed when you build from source.
 
 Use the [Telegram Quickstart](docs/telegram-quickstart.md).
 
-It walks through installation, bot setup, token storage, pairing, thread
-selection, and a first Telegram test message.
+It walks through installation, bot setup, token storage, pairing, channel
+startup, and a first Telegram test message.
 
 Want to try the local loop before making a Telegram bot?
 Use the [Fakechat Demo](docs/fakechat-demo.md).
@@ -77,7 +77,6 @@ remotty telegram configure --config $configPath
 remotty --config $configPath
 remotty telegram access-pair <code> --config $configPath
 remotty telegram policy allowlist --config $configPath
-remotty telegram sessions --config $configPath
 ```
 
 When `remotty --config $configPath` succeeds, the terminal prints
@@ -96,15 +95,9 @@ Run these in Telegram:
 /stop
 /approve <request_id>
 /deny <request_id>
-/remotty-sessions <thread title or ID>
 /workspace
 /workspace <id>
 ```
-
-Thread titles may include spaces.
-No quotes are needed.
-If more than one thread matches, use the shown `ID`.
-If a title also looks like another thread's `ID`, use the shown `ID`.
 
 ## Security
 

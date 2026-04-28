@@ -10,7 +10,7 @@ It talks to local Codex through the local `codex` command.
 2. You start `remotty` in PowerShell with the same Windows user.
 3. `remotty` prints a channel-style startup message.
 4. You send a message to your Telegram bot.
-5. `remotty` sends that message to the selected Codex thread.
+5. `remotty` sends that message to the Codex CLI session you started for this project.
 6. Codex replies, and `remotty` sends the reply back to Telegram.
 
 When startup succeeds, the `remotty` terminal shows:
@@ -113,6 +113,7 @@ Listening for Telegram channel messages from: remotty:telegram
 ```
 
 It also shows the Telegram bot, Codex transport, and registered workspaces.
+At this point, the Codex CLI session for this project is the Telegram target.
 Keep this process running while you use Telegram.
 
 ## 7. Pair Telegram
@@ -134,42 +135,15 @@ remotty telegram policy allowlist --config $configPath
 
 This prevents other Telegram users from controlling your local Codex setup.
 
-## 8. Select a Codex Thread
-
-List available Codex threads:
-
-```powershell
-remotty telegram sessions --config $configPath
-```
-
-Choose the thread you want Telegram to continue.
-Then send this in the target Telegram chat:
-
-```text
-/remotty-sessions <thread title or ID>
-```
-
-For example:
-
-```text
-/remotty-sessions Start workspace session
-```
-
-Everything after `/remotty-sessions` is treated as one title.
-No quotes are needed.
-Matching is case-insensitive.
-`remotty` tries exact `ID`, exact title, `ID` prefix, then a title substring match.
-If more than one thread matches, use the shown `ID`.
-
-## 9. Send a Test Message
+## 8. Send a Test Message
 
 In Telegram, send:
 
 ```text
-Summarize the current thread and suggest the next step.
+Summarize the current session and suggest the next step.
 ```
 
-`remotty` sends the text to the selected Codex thread.
+`remotty` sends the text to the Codex CLI session you connected in step 6.
 The reply appears in Telegram.
 
 ## Approval Prompts

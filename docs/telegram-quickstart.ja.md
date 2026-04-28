@@ -10,7 +10,7 @@
 2. 同じ Windows ユーザーで `remotty` を起動します。
 3. `remotty` がチャンネル型の起動表示を出します。
 4. Telegram bot へメッセージを送ります。
-5. `remotty` が選択済みの Codex スレッドへ文を渡します。
+5. `remotty` が、このプロジェクトで起動した `Codex CLI` セッションへ文を渡します。
 6. Codex が返答し、`remotty` が Telegram へ戻します。
 
 起動に成功すると、`remotty` のターミナルに次の表示が出ます。
@@ -113,6 +113,7 @@ Listening for Telegram channel messages from: remotty:telegram
 ```
 
 同じ起動ログには、Telegram bot、Codex の接続方式、登録済みワークスペースも表示されます。
+この時点で、このプロジェクトの `Codex CLI` セッションが Telegram の連携先になります。
 Telegram から使う間は、このプロセスを起動したままにしてください。
 
 ## 7. Telegram をペアリングする
@@ -134,42 +135,15 @@ remotty telegram policy allowlist --config $configPath
 
 これで、他の Telegram ユーザーが手元の Codex を操作できなくなります。
 
-## 8. Codex スレッドを選ぶ
-
-利用できる Codex スレッドを表示します。
-
-```powershell
-remotty telegram sessions --config $configPath
-```
-
-Telegram から続けたいスレッドを選びます。
-対象の Telegram チャットで次を送ります。
-
-```text
-/remotty-sessions <スレッド名または ID>
-```
-
-例:
-
-```text
-/remotty-sessions Start workspace session
-```
-
-`/remotty-sessions` の後ろは、まとめて1つの名前として扱います。
-引用符は不要です。
-大文字と小文字は区別しません。
-`remotty` は `ID`、完全な名前、`ID` の先頭、名前の一部の順に探します。
-複数のスレッドが一致した場合は、表示された `ID` を使います。
-
-## 9. テストメッセージを送る
+## 8. テストメッセージを送る
 
 Telegram で次を送ります。
 
 ```text
-このスレッドの内容を要約して、次にやることを提案してください。
+このセッションの内容を要約して、次にやることを提案してください。
 ```
 
-`remotty` は選択済みスレッドへ文を渡します。
+`remotty` は手順 6 で連携した `Codex CLI` セッションへ文を渡します。
 返答は Telegram に表示されます。
 
 ## 承認待ち
