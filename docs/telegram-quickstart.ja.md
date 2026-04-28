@@ -44,6 +44,10 @@ $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
 以降の例では、`$configPath` を使います。
+新しい PowerShell を開いた場合は、その PowerShell でも先に `$configPath` を設定してから、
+`remotty ... --config $configPath` を実行してください。
+この行は、設定ファイルの場所を PowerShell 変数に入れるだけです。
+プロジェクトを登録するのは、次の `remotty config workspace upsert ...` コマンドです。
 
 ## 2. プロジェクトを登録する
 
@@ -51,6 +55,7 @@ Telegram から続けたいプロジェクトへ移動します。
 
 ```powershell
 Set-Location C:\path\to\your\project
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
 プロジェクトごとに1回実行します。
@@ -81,6 +86,7 @@ token をチャット、スクリーンショット、issue、PR に貼らない
 次を実行します。
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram configure --config $configPath
 ```
 
@@ -109,6 +115,7 @@ codex
 
 ```powershell
 Set-Location C:\path\to\your\project
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty --config $configPath
 ```
 
@@ -136,12 +143,14 @@ bot は `remotty pairing code` を返します。
 次を実行します。
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram access-pair <code> --config $configPath
 ```
 
 次に、許可済み送信者を確認します。
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram policy allowlist --config $configPath
 ```
 
@@ -168,7 +177,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 > Q. Telegram とつながっているか、どこで分かりますか?
 >
 > A. `remotty` のターミナルに `Listening for Telegram channel messages from: remotty:telegram` が出ていることを確認してください。
-> 出ていない場合は、`remotty --config $configPath` を起動し直します。
+> 出ていない場合は、PowerShell で `$configPath` を設定してから `remotty --config $configPath` を起動し直します。
 
 > Q. `remotty` に Codex App は必要ですか?
 >
@@ -181,7 +190,7 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 > Q. bot が返答しません。
 >
 > A. まず `remotty` のターミナルが動いているか確認します。
-> 次に `remotty telegram live-env-check --config $configPath` を実行します。
+> 次に PowerShell で `$configPath` を設定してから `remotty telegram live-env-check --config $configPath` を実行します。
 > webhook 状態が `webhook-configured` の場合は polling に戻してください。
 
 > Q. Telegram の polling 競合が出ます。
