@@ -179,6 +179,8 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("## 5. Start Codex CLI"));
     assert!(quickstart.contains("Do not run `remotty ...` commands in this"));
     assert!(quickstart.contains("not inside the Codex CLI prompt"));
+    assert!(quickstart.contains("define `$configPath` in that window first"));
+    assert!(quickstart.contains("This line only stores the config file path"));
     assert!(quickstart.contains("Codex CLI session for this project is the Telegram target"));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Windows protected storage"));
@@ -200,6 +202,8 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("## 5. `Codex CLI` を起動する"));
     assert!(quickstart_ja.contains("この画面では `remotty ...` コマンドを実行しません"));
     assert!(quickstart_ja.contains("`Codex CLI` の入力欄には貼らないでください"));
+    assert!(quickstart_ja.contains("その PowerShell でも先に `$configPath` を設定"));
+    assert!(quickstart_ja.contains("設定ファイルの場所を PowerShell 変数に入れるだけ"));
     assert!(
         quickstart_ja.contains("このプロジェクトの `Codex CLI` セッションが Telegram の連携先")
     );

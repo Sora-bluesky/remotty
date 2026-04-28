@@ -43,7 +43,11 @@ Save the config path in a variable:
 $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
-The examples below reuse `$configPath`.
+The examples below reuse `$configPath`. If you open a new PowerShell window,
+define `$configPath` in that window first before running a `remotty ... --config $configPath` command.
+This line only stores the config file path in a PowerShell variable. It does
+not register a project. The next `remotty config workspace upsert ...` command
+uses that path and registers the project.
 
 ## 2. Register Your Project
 
@@ -51,6 +55,7 @@ Use the project you want to continue from Telegram:
 
 ```powershell
 Set-Location C:\path\to\your\project
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
 Run this once per project:
@@ -81,6 +86,7 @@ Do not post the token in chat, screenshots, issues, or pull requests.
 Run:
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram configure --config $configPath
 ```
 
@@ -108,6 +114,7 @@ Open a separate PowerShell window, navigate to the same project, and run `remott
 
 ```powershell
 Set-Location C:\path\to\your\project
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty --config $configPath
 ```
 
@@ -134,12 +141,14 @@ The bot replies with a `remotty pairing code`.
 Run:
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram access-pair <code> --config $configPath
 ```
 
 Then check the allowlist:
 
 ```powershell
+$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty telegram policy allowlist --config $configPath
 ```
 
@@ -166,7 +175,7 @@ Only allowed senders can approve.
 > Q. How do I know Telegram is connected?
 >
 > A. The `remotty` terminal must show `Listening for Telegram channel messages from: remotty:telegram`.
-> If that line is missing, restart `remotty --config $configPath`.
+> If that line is missing, define `$configPath` in PowerShell and restart `remotty --config $configPath`.
 
 > Q. Does `remotty` require Codex App?
 >
@@ -179,7 +188,7 @@ Only allowed senders can approve.
 > Q. The bot does not reply.
 >
 > A. First confirm the `remotty` terminal is still running.
-> Then run `remotty telegram live-env-check --config $configPath`.
+> Then define `$configPath` in PowerShell and run `remotty telegram live-env-check --config $configPath`.
 > If the webhook status is `webhook-configured`, switch the bot back to polling.
 
 > Q. Telegram reports a polling conflict.
