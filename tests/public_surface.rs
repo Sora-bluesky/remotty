@@ -176,7 +176,9 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(!readme_ja.contains("docs/development.ja.md"));
     assert!(quickstart.contains("remotty config workspace upsert"));
-    assert!(quickstart.contains("Start Codex CLI from that project"));
+    assert!(quickstart.contains("## 5. Start Codex CLI"));
+    assert!(quickstart.contains("Do not run `remotty ...` commands in this"));
+    assert!(quickstart.contains("not inside the Codex CLI prompt"));
     assert!(quickstart.contains("Codex CLI session for this project is the Telegram target"));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Windows protected storage"));
@@ -195,7 +197,9 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
-    assert!(quickstart_ja.contains("手元の画面でセッションを確認したい場合"));
+    assert!(quickstart_ja.contains("## 5. `Codex CLI` を起動する"));
+    assert!(quickstart_ja.contains("この画面では `remotty ...` コマンドを実行しません"));
+    assert!(quickstart_ja.contains("`Codex CLI` の入力欄には貼らないでください"));
     assert!(
         quickstart_ja.contains("このプロジェクトの `Codex CLI` セッションが Telegram の連携先")
     );

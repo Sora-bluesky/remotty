@@ -6,8 +6,8 @@
 
 ## 仕組み
 
-1. 作業したいプロジェクトで `Codex CLI` を起動します。
-2. 同じ Windows ユーザーで `remotty` を起動します。
+1. 作業したいプロジェクトで、1つ目の PowerShell ウィンドウを使って `Codex CLI` を起動します。
+2. 同じ Windows ユーザー、同じプロジェクトで、別の PowerShell ウィンドウを使って `remotty` を起動します。
 3. `remotty` がチャンネル型の起動表示を出します。
 4. Telegram bot へメッセージを送ります。
 5. `remotty` が、このプロジェクトで起動した `Codex CLI` セッションへ文を渡します。
@@ -45,21 +45,13 @@ $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 
 以降の例では、`$configPath` を使います。
 
-## 2. プロジェクトへ入る
+## 2. プロジェクトを登録する
 
 Telegram から続けたいプロジェクトへ移動します。
 
 ```powershell
 Set-Location C:\path\to\your\project
 ```
-
-手元の画面でセッションを確認したい場合は、同じプロジェクトで `Codex CLI` を起動します。
-
-```powershell
-codex
-```
-
-## 3. プロジェクトを登録する
 
 プロジェクトごとに1回実行します。
 
@@ -71,7 +63,7 @@ remotty config workspace upsert --config $configPath --path (Get-Location).Path
 プロジェクトのルートにはファイルを作りません。
 確認したい場合は、`git status` を実行してください。
 
-## 4. Telegram bot を用意する
+## 3. Telegram bot を用意する
 
 すでに `remotty` 用の bot がある場合は、その token を使います。
 新しく作る場合だけ、次を行います。
@@ -84,7 +76,7 @@ remotty config workspace upsert --config $configPath --path (Get-Location).Path
 
 token をチャット、スクリーンショット、issue、PR に貼らないでください。
 
-## 5. bot token を保存する
+## 4. bot token を保存する
 
 次を実行します。
 
@@ -97,13 +89,33 @@ remotty telegram configure --config $configPath
 暗号化されたファイルは `%LOCALAPPDATA%\remotty\secrets` 配下です。
 既定のファイル名は `remotty-telegram-bot.bin` です。
 
-## 6. Telegram チャンネルを起動する
+## 5. `Codex CLI` を起動する
 
-Telegram とつなぐ時に実行します。
+`Codex CLI` 用の PowerShell を開き、同じプロジェクトへ移動してから起動します。
 
 ```powershell
+Set-Location C:\path\to\your\project
+codex
+```
+
+この `Codex CLI` の画面は開いたままにします。
+`remotty` が Telegram のメッセージをこのセッションへ渡すためです。
+`codex` の起動後、その画面は PowerShell ではなく `Codex CLI` のプロンプトになっています。
+この画面では `remotty ...` コマンドを実行しません。
+
+## 6. Telegram チャンネルを起動する
+
+別の PowerShell を開き、同じプロジェクトへ移動してから `remotty` を起動します。
+
+```powershell
+Set-Location C:\path\to\your\project
 remotty --config $configPath
 ```
+
+これは PowerShell で実行します。
+`Codex CLI` の入力欄には貼らないでください。
+`no matches` が出る場合は、`Codex CLI` のプロンプトへ送っています。
+`Esc` で入力を消し、別の PowerShell に切り替えて実行してください。
 
 起動時は `%APPDATA%\remotty\bridge.toml` の設定を使います。
 起動に成功したら、ターミナルに次の表示があることを確認します。
@@ -143,7 +155,7 @@ Telegram で次を送ります。
 このセッションの内容を要約して、次にやることを提案してください。
 ```
 
-`remotty` は手順 6 で連携した `Codex CLI` セッションへ文を渡します。
+`remotty` は手順 5 で起動した `Codex CLI` セッションへ文を渡します。
 返答は Telegram に表示されます。
 
 ## 承認待ち
