@@ -25,7 +25,6 @@ Example requests:
 - `Pair with the code shown in Telegram`
 - `Lock down Telegram access to the allowlist`
 - `Check status`
-- `List Codex threads`
 
 The plugin lives in `plugins/remotty/` and is listed by the package-local
 marketplace in `.agents/plugins/marketplace.json`.

@@ -177,17 +177,23 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(!readme_ja.contains("docs/development.ja.md"));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("## 5. Start Codex CLI"));
+    assert!(quickstart.contains("You will use these PowerShell windows:"));
+    assert!(quickstart.contains("Setup PowerShell"));
+    assert!(quickstart.contains("Bridge PowerShell"));
+    assert!(quickstart.contains(r#""$env:APPDATA\remotty\bridge.toml""#));
+    assert!(quickstart.contains("Keep Bridge PowerShell open while you use Telegram."));
+    assert!(quickstart.contains("Run this in Setup PowerShell:"));
+    assert!(quickstart.contains("Open Codex PowerShell"));
+    assert!(quickstart.contains("Open Bridge PowerShell"));
     assert!(quickstart.contains("Do not run `remotty ...` commands in this"));
     assert!(quickstart.contains("not inside the Codex CLI prompt"));
-    assert!(quickstart.contains("define `$configPath` in that window first"));
-    assert!(quickstart.contains("This line only stores the config file path"));
+    assert!(quickstart.contains("Do not type these commands into the Codex CLI window"));
     assert!(quickstart.contains("Codex CLI session for this project is the Telegram target"));
     assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains(r"%LOCALAPPDATA%\remotty\secrets"));
     assert!(quickstart.contains("remotty-telegram-bot.bin"));
     assert!(quickstart.contains("Listening for Telegram channel messages from: remotty:telegram"));
-    assert!(quickstart.contains("Keep that terminal open while you use Telegram."));
     assert!(quickstart.contains("does not create files in the project root"));
     assert!(quickstart.contains("Security Q&A"));
     assert!(quickstart.contains("Connection Q&A"));
@@ -200,10 +206,20 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
     assert!(quickstart_ja.contains("## 5. `Codex CLI` を起動する"));
+    assert!(quickstart_ja.contains("この手順では、次の PowerShell 画面を使い分けます。"));
+    assert!(quickstart_ja.contains("設定用 PowerShell"));
+    assert!(quickstart_ja.contains("ブリッジ用 PowerShell"));
+    assert!(quickstart_ja.contains(r#""$env:APPDATA\remotty\bridge.toml""#));
+    assert!(
+        quickstart_ja
+            .contains("Telegram から使う間は、ブリッジ用 PowerShell を開いたままにします。")
+    );
+    assert!(quickstart_ja.contains("設定用 PowerShell で実行します。"));
+    assert!(quickstart_ja.contains("Codex 用 PowerShell を開き"));
+    assert!(quickstart_ja.contains("ブリッジ用 PowerShell を開き"));
     assert!(quickstart_ja.contains("この画面では `remotty ...` コマンドを実行しません"));
     assert!(quickstart_ja.contains("`Codex CLI` の入力欄には貼らないでください"));
-    assert!(quickstart_ja.contains("その PowerShell でも先に `$configPath` を設定"));
-    assert!(quickstart_ja.contains("設定ファイルの場所を PowerShell 変数に入れるだけ"));
+    assert!(quickstart_ja.contains("`remotty` が起動中のブリッジ用 PowerShell には入力しません"));
     assert!(
         quickstart_ja.contains("このプロジェクトの `Codex CLI` セッションが Telegram の連携先")
     );
@@ -214,7 +230,6 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(
         quickstart_ja.contains("Listening for Telegram channel messages from: remotty:telegram")
     );
-    assert!(quickstart_ja.contains("ターミナルを開いたままにします"));
     assert!(quickstart_ja.contains("プロジェクトのルートに"));
     assert!(quickstart_ja.contains("安全性の Q&A"));
     assert!(quickstart_ja.contains("接続の Q&A"));

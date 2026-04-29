@@ -16,7 +16,7 @@ transport = "app_server"
 ```
 
 With this setting, Telegram continues the Codex CLI session through the
-`remotty --config $configPath` process you start for that project.
+`remotty --config "$env:APPDATA\remotty\bridge.toml"` process you start for that project.
 
 ## If Your Config Uses `exec`
 

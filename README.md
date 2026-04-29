@@ -66,22 +66,24 @@ npm install -g remotty
 Then follow the [Telegram Quickstart](docs/telegram-quickstart.md) from the
 project you want to use.
 
-## Main Commands
+## Quickstart Overview
 
-Run these from PowerShell:
+Do not copy the setup commands as one script.
+The Telegram setup uses separate PowerShell windows because the `codex` and
+`remotty` processes both stay open while you use Telegram.
 
-```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty config workspace upsert --config $configPath --path (Get-Location).Path
-remotty telegram configure --config $configPath
-remotty --config $configPath
-remotty telegram access-pair <code> --config $configPath
-remotty telegram policy allowlist --config $configPath
-```
+| Window | Keep it open? | Use it for |
+| --- | --- | --- |
+| Setup PowerShell | No | Install `remotty`, register the project, store the bot token, and pair Telegram. |
+| Codex PowerShell | Yes | Start `codex` in the project you want to continue from Telegram. |
+| Bridge PowerShell | Yes | Start `remotty --config "$env:APPDATA\remotty\bridge.toml"` for the same project. |
 
-When `remotty --config $configPath` succeeds, the terminal prints
+Follow the [Telegram Quickstart](docs/telegram-quickstart.md) for the exact
+step-by-step commands.
+
+When the bridge starts successfully, the terminal prints
 `Listening for Telegram channel messages from: remotty:telegram`.
-Keep that terminal open while you use Telegram.
+Keep that Bridge PowerShell window open while you use Telegram.
 
 If you also use Codex App, the bundled plugin can help with setup tasks.
 The plugin is optional. The supported Telegram flow is the Codex CLI flow above:

@@ -13,13 +13,21 @@ It talks to local Codex through the local `codex` command.
 5. `remotty` sends that message to the Codex CLI session you started for this project.
 6. Codex replies, and `remotty` sends the reply back to Telegram.
 
+You will use these PowerShell windows:
+
+| Window | Keep it open? | Use it for |
+| --- | --- | --- |
+| Setup PowerShell | No | Install `remotty`, register the project, store the bot token, and pair Telegram. |
+| Codex PowerShell | Yes | Run `codex` in the project you want to continue from Telegram. |
+| Bridge PowerShell | Yes | Run `remotty --config "$env:APPDATA\remotty\bridge.toml"` for the same project. |
+
 When startup succeeds, the `remotty` terminal shows:
 
 ```text
 Listening for Telegram channel messages from: remotty:telegram
 ```
 
-Keep that terminal open while you use Telegram.
+Keep Bridge PowerShell open while you use Telegram.
 
 ## What You Need
 
@@ -31,37 +39,24 @@ Keep that terminal open while you use Telegram.
 
 ## 1. Install `remotty`
 
-Run this in PowerShell:
+Run this in Setup PowerShell:
 
 ```powershell
 npm install -g remotty
 ```
 
-Save the config path in a variable:
-
-```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-```
-
-The examples below reuse `$configPath`. If you open a new PowerShell window,
-define `$configPath` in that window first before running a `remotty ... --config $configPath` command.
-This line only stores the config file path in a PowerShell variable. It does
-not register a project. The next `remotty config workspace upsert ...` command
-uses that path and registers the project.
-
 ## 2. Register Your Project
 
-Use the project you want to continue from Telegram:
+In Setup PowerShell, use the project you want to continue from Telegram:
 
 ```powershell
 Set-Location C:\path\to\your\project
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 ```
 
-Run this once per project:
+Run this once per project in Setup PowerShell:
 
 ```powershell
-remotty config workspace upsert --config $configPath --path (Get-Location).Path
+remotty config workspace upsert --config "$env:APPDATA\remotty\bridge.toml" --path (Get-Location).Path
 ```
 
 This saves the project to `%APPDATA%\remotty\bridge.toml`.
@@ -83,11 +78,10 @@ Do not post the token in chat, screenshots, issues, or pull requests.
 
 ## 4. Store the Bot Token
 
-Run:
+Run this in Setup PowerShell:
 
 ```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty telegram configure --config $configPath
+remotty telegram configure --config "$env:APPDATA\remotty\bridge.toml"
 ```
 
 Paste the token when prompted.
@@ -97,7 +91,7 @@ The default file name is `remotty-telegram-bot.bin`.
 
 ## 5. Start Codex CLI
 
-Open a PowerShell window for Codex, navigate to the same project, and start Codex CLI:
+Open Codex PowerShell, navigate to the same project, and start Codex CLI:
 
 ```powershell
 Set-Location C:\path\to\your\project
@@ -110,16 +104,15 @@ PowerShell prompt. Do not run `remotty ...` commands in this window.
 
 ## 6. Start the Telegram Channel
 
-Open a separate PowerShell window, navigate to the same project, and run `remotty`:
+Open Bridge PowerShell, navigate to the same project, and run `remotty`:
 
 ```powershell
 Set-Location C:\path\to\your\project
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty --config $configPath
+remotty --config "$env:APPDATA\remotty\bridge.toml"
 ```
 
-Run this in PowerShell, not inside the Codex CLI prompt. If Codex shows
-`no matches`, press `Esc` to clear that input, switch to the separate PowerShell
+Run this in Bridge PowerShell, not inside the Codex CLI prompt. If Codex shows
+`no matches`, press `Esc` to clear that input, switch to Bridge PowerShell
 window, and run the command there.
 
 Startup uses `%APPDATA%\remotty\bridge.toml`.
@@ -138,18 +131,19 @@ Keep this process running while you use Telegram.
 Send any message to your bot in a private Telegram chat.
 The bot replies with a `remotty pairing code`.
 
-Run:
+Use Setup PowerShell.
+If you closed it, open a new normal PowerShell window and use that as Setup PowerShell.
+Do not type these commands into the Codex CLI window or the Bridge PowerShell window where
+`remotty` is already running.
 
 ```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty telegram access-pair <code> --config $configPath
+remotty telegram access-pair <code> --config "$env:APPDATA\remotty\bridge.toml"
 ```
 
 Then check the allowlist:
 
 ```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty telegram policy allowlist --config $configPath
+remotty telegram policy allowlist --config "$env:APPDATA\remotty\bridge.toml"
 ```
 
 This prevents other Telegram users from controlling your local Codex setup.
@@ -175,7 +169,7 @@ Only allowed senders can approve.
 > Q. How do I know Telegram is connected?
 >
 > A. The `remotty` terminal must show `Listening for Telegram channel messages from: remotty:telegram`.
-> If that line is missing, define `$configPath` in PowerShell and restart `remotty --config $configPath`.
+> If that line is missing, restart `remotty --config "$env:APPDATA\remotty\bridge.toml"` in Bridge PowerShell.
 
 > Q. Does `remotty` require Codex App?
 >
@@ -188,7 +182,7 @@ Only allowed senders can approve.
 > Q. The bot does not reply.
 >
 > A. First confirm the `remotty` terminal is still running.
-> Then define `$configPath` in PowerShell and run `remotty telegram live-env-check --config $configPath`.
+> Then run `remotty telegram live-env-check --config "$env:APPDATA\remotty\bridge.toml"` in Setup PowerShell.
 > If the webhook status is `webhook-configured`, switch the bot back to polling.
 
 > Q. Telegram reports a polling conflict.

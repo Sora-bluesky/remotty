@@ -61,22 +61,23 @@ npm install -g remotty
 
 その後、利用したいプロジェクトで [Telegram クイックスタート](docs/telegram-quickstart.ja.md) に沿って進めます。
 
-## 主なコマンド
+## はじめ方の流れ
 
-PowerShell で実行します。
+設定コマンドを1つのスクリプトとしてまとめて貼らないでください。
+Telegram 連携では、`codex` と `remotty` の両方を起動したまま使うため、
+PowerShell の画面を分けます。
 
-```powershell
-$configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
-remotty config workspace upsert --config $configPath --path (Get-Location).Path
-remotty telegram configure --config $configPath
-remotty --config $configPath
-remotty telegram access-pair <code> --config $configPath
-remotty telegram policy allowlist --config $configPath
-```
+| 画面 | 開いたままにするか | 使う場面 |
+| --- | --- | --- |
+| 設定用 PowerShell | いいえ | `remotty` のインストール、プロジェクト登録、bot token の保存、Telegram のペアリング |
+| Codex 用 PowerShell | はい | Telegram から続けたいプロジェクトで `codex` を起動 |
+| ブリッジ用 PowerShell | はい | 同じプロジェクトで `remotty --config "$env:APPDATA\remotty\bridge.toml"` を起動 |
 
-`remotty --config $configPath` が成功すると、ターミナルに
+具体的なコマンドは、[Telegram クイックスタート](docs/telegram-quickstart.ja.md) に沿って実行してください。
+
+ブリッジの起動に成功すると、ターミナルに
 `Listening for Telegram channel messages from: remotty:telegram` と表示されます。
-Telegram から使う間は、そのターミナルを開いたままにしてください。
+Telegram から使う間は、ブリッジ用 PowerShell を開いたままにしてください。
 
 Codex App も使う場合は、同梱のプラグインで設定作業を補助できます。
 プラグインは任意です。
