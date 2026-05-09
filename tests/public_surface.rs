@@ -260,7 +260,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
         remote_companion
             .contains("Telegram bridge for watching Codex work and sending short follow-ups")
     );
-    assert!(remote_companion.contains("not a replacement for the Codex App"));
+    assert!(remote_companion.contains("does not replace that workspace"));
     assert!(remote_companion.contains("main workspace"));
     assert!(remote_companion.contains("Use `remotty` as the Telegram bridge"));
     assert!(remote_companion.contains("future direction"));
@@ -268,7 +268,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(
         remote_companion_ja.contains("Windows 上の Codex 作業を Telegram から見守るためのブリッジ")
     );
-    assert!(remote_companion_ja.contains("Codex App の代替ではありません"));
+    assert!(remote_companion_ja.contains("将来のスマホアプリを前提にした名前ではありません"));
     assert!(remote_companion_ja.contains("主な作業画面"));
     assert!(remote_companion_ja.contains("外出先から短く声をかけるための Telegram ブリッジ"));
     assert!(remote_companion_ja.contains("今後の方針です"));
