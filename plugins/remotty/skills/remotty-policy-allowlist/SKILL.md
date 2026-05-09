@@ -6,6 +6,7 @@ description: Apply or check the Telegram allowlist policy for remotty. Use after
 # remotty policy allowlist
 
 Apply the allowlist workflow and show the allowed sender state.
+The supported Telegram flow is for Codex CLI.
 
 1. Resolve the config path:
 

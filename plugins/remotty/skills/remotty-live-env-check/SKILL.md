@@ -6,6 +6,7 @@ description: Check the Telegram environment for remotty. Use when the bot does n
 # remotty live env check
 
 Check Telegram setup without printing secrets.
+The supported Telegram flow is for Codex CLI.
 
 1. Resolve the config path:
 

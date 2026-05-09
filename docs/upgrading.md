@@ -8,19 +8,15 @@ New installs should follow the [Telegram Quickstart](telegram-quickstart.md).
 
 Open `%APPDATA%\remotty\bridge.toml`.
 
-For the normal Telegram-to-thread flow, use:
+For the normal Telegram flow, use:
 
 ```toml
 [codex]
 transport = "app_server"
 ```
 
-This lets Telegram continue the Codex thread you select with:
-
-```text
-/remotty-sessions
-/remotty-sessions <thread title or ID>
-```
+With this setting, Telegram continues the Codex CLI session through the
+`remotty --config "$env:APPDATA\remotty\bridge.toml"` process you start for that project.
 
 ## If Your Config Uses `exec`
 

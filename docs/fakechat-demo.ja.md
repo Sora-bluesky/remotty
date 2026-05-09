@@ -30,7 +30,7 @@ http://127.0.0.1:8787
 小さな依頼を送ります。
 
 ```text
-What files are in this workspace?
+このワークスペースにはどんなファイルがありますか?
 ```
 
 `remotty` は読み取り専用で `codex exec` を実行し、返答を画面へ戻します。
@@ -65,11 +65,11 @@ remotty demo fakechat --thread-id <codex-thread-id>
 
 Fakechat はローカル専用のデモです。`remotty` がローカルの Codex を呼び、チャット形式で返答できることを確認するために使います。
 
-Telegram mode では、次の実運用向け機能が加わります。
+Telegram モードでは、次の実運用向け機能が加わります。
 
-- `@BotFather` を使った bot 作成
-- アカウントの pairing と allowlist
-- Telegram への承認メッセージ
-- ブリッジ起動中にスマホから使える導線
+- `@BotFather` での bot 作成
+- アカウントのペアリングと allowlist
+- Telegram での承認メッセージ
+- ブリッジ起動中、スマホからも操作できること
 
 デモが動いたら、次は [Telegram クイックスタート](telegram-quickstart.ja.md) に進んでください。

@@ -6,6 +6,7 @@ description: List Codex threads for remotty and explain how to bind a Telegram c
 # remotty sessions
 
 List threads and guide Telegram binding.
+The supported Telegram flow is for Codex CLI.
 
 1. Resolve the config path:
 

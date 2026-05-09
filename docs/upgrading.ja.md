@@ -1,6 +1,6 @@
 # 更新時の注意
 
-すでに古い `remotty` 設定を持っている場合に見てください。
+すでに `remotty` の設定がある場合に見てください。
 
 新規に入れる場合は、[Telegram クイックスタート](telegram-quickstart.ja.md) を使ってください。
 
@@ -15,13 +15,8 @@
 transport = "app_server"
 ```
 
-これで、Telegram から選択済みの Codex スレッドを続けられます。
-スレッドは次で選びます。
-
-```text
-/remotty-sessions
-/remotty-sessions <スレッド名または ID>
-```
+これで、そのプロジェクトで起動した `remotty --config "$env:APPDATA\remotty\bridge.toml"` のプロセスを通じて、
+Telegram から `Codex CLI` セッションを続けられます。
 
 ## 設定が `exec` の場合
 
@@ -42,4 +37,4 @@ transport = "exec"
 `remotty` は自分の状態を `%APPDATA%\remotty` に保存します。
 
 プロジェクトのリポジトリへ、`remotty` の実行時ファイルは置きません。
-ただし、依頼内容によって Codex 自体はプロジェクトを編集します。
+ただし、依頼内容によっては、Codex 自体がプロジェクトを編集することがあります。

@@ -6,6 +6,7 @@ description: Store the Telegram bot token for remotty in Windows protected stora
 # remotty configure
 
 Store the Telegram bot token without printing it.
+The supported Telegram flow is for Codex CLI.
 
 1. Resolve the config path:
 

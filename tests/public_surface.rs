@@ -145,10 +145,15 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
     assert!(quickstart.contains("npm install -g remotty"));
-    assert!(readme.contains("Codex thread"));
+    assert!(
+        readme.contains("Telegram bridge for watching Codex work and sending short follow-ups")
+    );
+    assert!(readme.contains("Codex CLI session you connected"));
+    assert!(readme.contains("Telegram Bridge Direction"));
     assert!(readme.contains("Telegram Quickstart"));
     assert!(readme.contains("Advanced CLI Mode"));
-    assert!(quickstart.contains("Register this project with remotty"));
+    assert!(quickstart.contains("Listening for Telegram channel messages from: remotty:telegram"));
+    assert!(readme.contains("remotty telegram configure"));
     assert!(!readme.contains("releases/latest/download/remotty.tgz"));
     assert!(!readme.contains("docs/development.md"));
     assert!(!package.contains("docs/development.md"));
@@ -164,77 +169,86 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
         std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.md"))?;
     let quickstart_ja =
         std::fs::read_to_string(repo_root().join("docs").join("telegram-quickstart.ja.md"))?;
+    let remote_companion =
+        std::fs::read_to_string(repo_root().join("docs").join("remote-companion.md"))?;
+    let remote_companion_ja =
+        std::fs::read_to_string(repo_root().join("docs").join("remote-companion.ja.md"))?;
     let exec_doc = std::fs::read_to_string(repo_root().join("docs").join("exec-transport.md"))?;
     let exec_doc_ja =
         std::fs::read_to_string(repo_root().join("docs").join("exec-transport.ja.md"))?;
     let upgrading = std::fs::read_to_string(repo_root().join("docs").join("upgrading.md"))?;
     let upgrading_ja = std::fs::read_to_string(repo_root().join("docs").join("upgrading.ja.md"))?;
 
-    assert!(readme_ja.contains("Codex スレッド"));
+    assert!(readme_ja.contains("連携した `Codex CLI` セッション"));
+    assert!(readme_ja.contains("Telegram から声をかけるための小さなブリッジ"));
+    assert!(readme_ja.contains("Telegram ブリッジとしての方針"));
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(!readme_ja.contains("docs/development.ja.md"));
-    assert!(quickstart.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart.contains("if the thread title is `Start workspace session`"));
-    assert!(quickstart.contains("No quotes are needed."));
-    assert!(quickstart.contains("Matching is case-insensitive."));
-    assert!(
-        quickstart.contains("exact `ID`, exact title, `ID` prefix, then a title substring match")
-    );
-    assert!(quickstart.contains("If more than one thread matches, use the shown `ID`."));
-    assert!(quickstart.contains("Register this project with remotty"));
-    assert!(quickstart.contains("Codex CLI users run"));
     assert!(quickstart.contains("remotty config workspace upsert"));
-    assert!(quickstart.contains("use a normal chat request"));
+    assert!(quickstart.contains("## 5. Start Codex CLI"));
+    assert!(quickstart.contains("You will use these PowerShell windows:"));
+    assert!(quickstart.contains("Setup PowerShell"));
+    assert!(quickstart.contains("Bridge PowerShell"));
+    assert!(quickstart.contains(r#""$env:APPDATA\remotty\bridge.toml""#));
+    assert!(quickstart.contains("Keep Bridge PowerShell open while you use Telegram."));
+    assert!(quickstart.contains("Run this in Setup PowerShell:"));
+    assert!(quickstart.contains("Open Codex PowerShell"));
+    assert!(quickstart.contains("Open Bridge PowerShell"));
+    assert!(quickstart.contains("Do not run `remotty ...` commands in this"));
+    assert!(quickstart.contains("not inside the Codex CLI prompt"));
+    assert!(quickstart.contains("Do not type these commands into the Codex CLI window"));
+    assert!(quickstart.contains("Codex CLI session for this project is the Telegram target"));
+    assert!(quickstart.contains("remotty config workspace upsert"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains(r"%LOCALAPPDATA%\remotty\secrets"));
     assert!(quickstart.contains("remotty-telegram-bot.bin"));
-    assert!(quickstart.contains("remotty local plugins"));
-    assert!(quickstart.contains("one-time setup"));
-    assert!(quickstart.contains("How Often Each Step Is Needed"));
-    assert!(quickstart.contains("Do these when you use a new project"));
-    assert!(quickstart.contains("Do this for each Telegram chat"));
+    assert!(quickstart.contains("Listening for Telegram channel messages from: remotty:telegram"));
     assert!(quickstart.contains("does not create files in the project root"));
     assert!(quickstart.contains("Security Q&A"));
     assert!(quickstart.contains("Connection Q&A"));
-    assert!(quickstart.contains("You do not need an `@remotty` mention"));
-    assert!(quickstart.contains("Pairing Q&A"));
-    assert!(quickstart.contains("Thread Selection Q&A"));
     assert!(quickstart.contains("Windows protected storage"));
     assert!(quickstart.contains("paired senders"));
-    assert!(quickstart.contains("Do not paste the token into Codex App chat."));
-    assert!(quickstart.contains("Regenerate it with `@BotFather`"));
+    assert!(quickstart.contains("Does `remotty` require Codex App?"));
+    assert!(quickstart.contains("Only paired senders on the allowlist are accepted."));
+    assert!(quickstart.contains("Telegram Bridge Direction"));
     assert!(!quickstart.contains("writable_roots"));
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
-    assert!(quickstart_ja.contains("/remotty-sessions Start workspace session"));
-    assert!(quickstart_ja.contains("スレッド名が `Start workspace session` の場合"));
-    assert!(quickstart_ja.contains("引用符は不要です"));
-    assert!(quickstart_ja.contains("大文字と小文字は区別しません"));
-    assert!(quickstart_ja.contains("`ID`、完全な名前、`ID` の先頭、名前の一部"));
-    assert!(quickstart_ja.contains("複数のスレッドが一致した場合は、表示された `ID` を使います"));
-    assert!(quickstart_ja.contains("このプロジェクトを remotty に登録して"));
-    assert!(quickstart_ja.contains("Codex CLI では"));
     assert!(quickstart_ja.contains("remotty config workspace upsert"));
-    assert!(quickstart_ja.contains("通常のチャット文"));
+    assert!(quickstart_ja.contains("## 5. `Codex CLI` を起動する"));
+    assert!(quickstart_ja.contains("この手順では、次の PowerShell 画面を使い分けます。"));
+    assert!(quickstart_ja.contains("設定用 PowerShell"));
+    assert!(quickstart_ja.contains("ブリッジ用 PowerShell"));
+    assert!(quickstart_ja.contains(r#""$env:APPDATA\remotty\bridge.toml""#));
+    assert!(
+        quickstart_ja
+            .contains("Telegram から使う間は、ブリッジ用 PowerShell を開いたままにします。")
+    );
+    assert!(quickstart_ja.contains("設定用 PowerShell で実行します。"));
+    assert!(quickstart_ja.contains("Codex 用 PowerShell を開き"));
+    assert!(quickstart_ja.contains("ブリッジ用 PowerShell を開き"));
+    assert!(quickstart_ja.contains("この画面では `remotty ...` コマンドを実行しません"));
+    assert!(quickstart_ja.contains("`Codex CLI` の入力欄には貼らないでください"));
+    assert!(quickstart_ja.contains("`remotty` が起動中のブリッジ用 PowerShell には入力しません"));
+    assert!(
+        quickstart_ja.contains("このプロジェクトの `Codex CLI` セッションが Telegram の連携先")
+    );
+    assert!(quickstart_ja.contains("remotty config workspace upsert"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains(r"%LOCALAPPDATA%\remotty\secrets"));
     assert!(quickstart_ja.contains("remotty-telegram-bot.bin"));
-    assert!(quickstart_ja.contains("remotty local plugins"));
-    assert!(quickstart_ja.contains("初回だけ"));
-    assert!(quickstart_ja.contains("手順の分け方"));
-    assert!(quickstart_ja.contains("新しいプロジェクトを使う時"));
-    assert!(quickstart_ja.contains("Telegram チャットごと"));
+    assert!(
+        quickstart_ja.contains("Listening for Telegram channel messages from: remotty:telegram")
+    );
     assert!(quickstart_ja.contains("プロジェクトのルートに"));
     assert!(quickstart_ja.contains("安全性の Q&A"));
     assert!(quickstart_ja.contains("接続の Q&A"));
-    assert!(quickstart_ja.contains("`@remotty` の表示は必須ではありません"));
-    assert!(quickstart_ja.contains("ペアリングの Q&A"));
-    assert!(quickstart_ja.contains("スレッド選択の Q&A"));
     assert!(quickstart_ja.contains("Windows の保護領域"));
     assert!(quickstart_ja.contains("許可済み送信者"));
-    assert!(quickstart_ja.contains("Codex App のチャット欄には貼らないでください"));
-    assert!(quickstart_ja.contains("@BotFather` で token を再発行"));
+    assert!(quickstart_ja.contains("`remotty` に Codex App は必要ですか?"));
+    assert!(quickstart_ja.contains("ペアリング済みで、allowlist に入った送信者だけ"));
+    assert!(quickstart_ja.contains("Telegram ブリッジとしての方針"));
     assert!(!quickstart_ja.contains("writable_roots"));
     assert!(!quickstart_ja.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart_ja.contains(".agents/plugins/marketplace.json"));
@@ -242,6 +256,23 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(exec_doc_ja.contains("transport = \"exec\""));
     assert!(upgrading.contains("transport = \"app_server\""));
     assert!(upgrading_ja.contains("transport = \"app_server\""));
+    assert!(
+        remote_companion
+            .contains("Telegram bridge for watching Codex work and sending short follow-ups")
+    );
+    assert!(remote_companion.contains("does not replace that workspace"));
+    assert!(remote_companion.contains("main workspace"));
+    assert!(remote_companion.contains("Use `remotty` as the Telegram bridge"));
+    assert!(remote_companion.contains("future direction"));
+    assert!(remote_companion.contains("connect to an existing Codex App Server"));
+    assert!(
+        remote_companion_ja.contains("Windows 上の Codex 作業を Telegram から見守るためのブリッジ")
+    );
+    assert!(remote_companion_ja.contains("特定のスマホアプリ名を指しているわけではありません"));
+    assert!(remote_companion_ja.contains("主な作業画面"));
+    assert!(remote_companion_ja.contains("外出先から短く声をかけるための Telegram ブリッジ"));
+    assert!(remote_companion_ja.contains("今後の方針です"));
+    assert!(remote_companion_ja.contains("既存の Codex App Server へ接続する"));
 
     Ok(())
 }
