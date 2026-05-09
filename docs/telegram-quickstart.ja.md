@@ -1,8 +1,8 @@
 # Telegram クイックスタート
 
-この手順では、Windows の `Codex CLI` と Telegram をつなぎます。
+この手順では、`remotty` を Windows の `Codex CLI` 向け Telegram リモートコンパニオンとして設定します。
 `remotty` は Codex App の画面へ入力しません。
-ローカルの `codex` コマンドを通じて Codex とやり取りします。
+ローカルの `codex` コマンドと `app_server` 接続を通じて Codex とやり取りします。
 
 ## 仕組み
 
@@ -12,6 +12,10 @@
 4. Telegram bot へメッセージを送ります。
 5. `remotty` が、このプロジェクトで起動した `Codex CLI` セッションへ文を渡します。
 6. Codex が返答し、`remotty` が Telegram へ戻します。
+
+現在の手順では、ローカルの `Codex CLI` セッションを使います。
+今後も `remotty` は、Telegram からの監視、承認の中継、短い追加入力に集中します。
+詳しくは [リモートコンパニオンとしての方針](remote-companion.ja.md) を参照してください。
 
 この手順では、次の PowerShell 画面を使い分けます。
 
@@ -209,4 +213,5 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 ## 関連ドキュメント
 
 - [高度な CLI モード](exec-transport.ja.md)
+- [リモートコンパニオンとしての方針](remote-companion.ja.md)
 - [更新時の注意](upgrading.ja.md)
