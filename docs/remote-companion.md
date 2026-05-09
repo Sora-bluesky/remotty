@@ -6,12 +6,12 @@ Delegated AI work does not always fail loudly.
 It may stop on an approval prompt, wait for a small decision, or need one short
 follow-up instruction.
 
-The Codex App or Codex CLI remains the main workspace for full transcripts,
+The main Codex workspace, or Codex CLI, remains the place for full transcripts,
 diff review, project selection, and rich task control.
 `remotty` stays focused on the smaller surface that is useful away from the desk:
 notifications, approval relay, concise status, and short follow-up messages.
-Here, Codex App means the main Codex workspace for reading work, reviewing
-diffs, and giving fuller instructions.
+In these docs, Codex App means that main Codex workspace.
+It does not mean a specific mobile app.
 `remotty` does not replace that workspace.
 Its future direction is to fit Codex App Server based workflows without
 pretending to be the full Codex interface.

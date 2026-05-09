@@ -11,13 +11,13 @@ run stops on an approval prompt, an error, or a small missing instruction.
 `remotty` gives you a narrow Telegram surface for that moment.
 
 Use Codex CLI as the local session that `remotty` connects to today.
-Use the Codex App or Codex CLI for richer task control, diff review, and long
-instructions.
+Use the main Codex workspace, or Codex CLI, for richer task control, diff
+review, and long instructions.
 Use `remotty` for Telegram notifications, approval relay, concise status, and
 short follow-up messages while away from the full Codex interface.
 
-Here, Codex App means the main Codex workspace for reading work, reviewing
-diffs, and giving fuller instructions.
+In these docs, Codex App means that main Codex workspace.
+It does not mean a specific mobile app.
 `remotty` does not replace that workspace.
 
 You send a message to your Telegram bot.
