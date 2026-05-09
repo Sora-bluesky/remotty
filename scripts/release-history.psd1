@@ -365,10 +365,10 @@
             Commit = "ed17a4566c67621ea057eea3310860bdfcb7b7e9"
             Title = "Telegram bridge documentation and dependency refresh"
             Notes = @(
-                "Reframed the public README and quickstart docs around Telegram bridge wording for non-engineer readers."
-                "Clarified that the main Codex work surface is not a specific mobile app and is not replaced by remotty."
-                "Updated the public hero image and public-facing checks to keep the Telegram bridge positioning consistent."
-                "Refreshed underlying dependency libraries to their latest patch versions."
+                "Rewrote the README and quickstart in plainer language so non-developers can follow the Telegram bridge setup."
+                "Clarified that remotty helps with short Telegram follow-ups and does not replace the main place people use Codex."
+                "Updated the public hero image to match the Telegram bridge wording."
+                "Included recent dependency patch updates from Dependabot."
             )
         }
     )
