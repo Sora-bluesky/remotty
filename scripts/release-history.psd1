@@ -366,9 +366,9 @@
             Title = "Telegram bridge documentation and dependency refresh"
             Notes = @(
                 "Reframed the public README and quickstart docs around Telegram bridge wording for non-engineer readers."
-                "Clarified that the main Codex workspace is not a specific mobile app and is not replaced by remotty."
-                "Updated the public hero image and public-surface tests to keep the Telegram bridge positioning consistent."
-                "Updated dependency libraries, including rpassword 7.5.0 and rustls-webpki 0.103.13."
+                "Clarified that the main Codex work surface is not a specific mobile app and is not replaced by remotty."
+                "Updated the public hero image and public-facing checks to keep the Telegram bridge positioning consistent."
+                "Refreshed underlying dependency libraries to their latest patch versions."
             )
         }
     )
