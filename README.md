@@ -16,7 +16,7 @@ review, and long instructions.
 Use `remotty` for Telegram notifications, approval relay, concise status, and
 short follow-up messages while away from the full Codex interface.
 
-That workspace does not mean a specific mobile app.
+Here, "main Codex workspace" does not mean a specific mobile app.
 It means the place where you read work, review diffs, and give fuller instructions.
 `remotty` does not replace that workspace.
 
