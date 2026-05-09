@@ -145,7 +145,9 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
     assert!(quickstart.contains("npm install -g remotty"));
-    assert!(readme.contains("Telegram bridge for watching Codex work and sending short follow-ups"));
+    assert!(
+        readme.contains("Telegram bridge for watching Codex work and sending short follow-ups")
+    );
     assert!(readme.contains("Codex CLI session you connected"));
     assert!(readme.contains("Telegram Bridge Direction"));
     assert!(readme.contains("Telegram Quickstart"));
@@ -254,13 +256,18 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(exec_doc_ja.contains("transport = \"exec\""));
     assert!(upgrading.contains("transport = \"app_server\""));
     assert!(upgrading_ja.contains("transport = \"app_server\""));
-    assert!(remote_companion.contains("Telegram bridge for watching Codex work and sending short follow-ups"));
+    assert!(
+        remote_companion
+            .contains("Telegram bridge for watching Codex work and sending short follow-ups")
+    );
     assert!(remote_companion.contains("not a replacement for the Codex App"));
     assert!(remote_companion.contains("main workspace"));
     assert!(remote_companion.contains("Use `remotty` as the Telegram bridge"));
     assert!(remote_companion.contains("future direction"));
     assert!(remote_companion.contains("connect to an existing Codex App Server"));
-    assert!(remote_companion_ja.contains("Windows 上の Codex 作業を Telegram から見守るためのブリッジ"));
+    assert!(
+        remote_companion_ja.contains("Windows 上の Codex 作業を Telegram から見守るためのブリッジ")
+    );
     assert!(remote_companion_ja.contains("Codex App の代替ではありません"));
     assert!(remote_companion_ja.contains("主な作業画面"));
     assert!(remote_companion_ja.contains("外出先から短く声をかけるための Telegram ブリッジ"));
