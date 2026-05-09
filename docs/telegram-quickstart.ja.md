@@ -1,8 +1,17 @@
 # Telegram クイックスタート
 
-この手順では、`remotty` を Windows の `Codex CLI` 向け Telegram リモートコンパニオンとして設定します。
+この手順では、`remotty` を Windows の `Codex CLI` 向け Telegram ブリッジとして設定します。
 `remotty` は Codex App の画面へ入力しません。
 ローカルの `codex` コマンドと `app_server` 接続を通じて Codex とやり取りします。
+
+## 何ができるようになるか
+
+AI に作業を任せると、作業中に承認が必要になることがあります。
+席を離れている間にそこで止まると、帰ってくるまで何も進みません。
+
+`remotty` を使うと、Telegram で状態を見たり、承認したり、短い追加入力を送ったりできます。
+ただし、Codex App を遠隔操作する公式機能ではありません。
+大きな方針変更や差分の細かい確認は、手元の Codex 画面で行います。
 
 ## 仕組み
 
@@ -14,8 +23,8 @@
 6. Codex が返答し、`remotty` が Telegram へ戻します。
 
 現在の手順では、ローカルの `Codex CLI` セッションを使います。
-今後も `remotty` は、Telegram からの監視、承認の中継、短い追加入力に集中します。
-詳しくは [リモートコンパニオンとしての方針](remote-companion.ja.md) を参照してください。
+今後も `remotty` は、Telegram からの見守り、承認の中継、短い追加入力に集中します。
+詳しくは [リモート操作ブリッジとしての方針](remote-companion.ja.md) を参照してください。
 
 この手順では、次の PowerShell 画面を使い分けます。
 
@@ -168,6 +177,8 @@ Telegram で次を送ります。
 
 Codex が承認を求めると、`remotty` は Telegram へ中継します。
 許可済み送信者だけが承認できます。
+分からない承認は、その場で許可しないでください。
+手元の Codex 画面で内容を確認してから判断します。
 
 ## 接続の Q&A
 
@@ -213,5 +224,5 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 ## 関連ドキュメント
 
 - [高度な CLI モード](exec-transport.ja.md)
-- [リモートコンパニオンとしての方針](remote-companion.ja.md)
+- [リモート操作ブリッジとしての方針](remote-companion.ja.md)
 - [更新時の注意](upgrading.ja.md)

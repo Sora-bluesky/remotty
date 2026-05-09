@@ -1,7 +1,11 @@
-# Remote Companion Direction
+# Remote Bridge Direction
 
-`remotty` is a Telegram remote companion for Codex on Windows.
+`remotty` is a Telegram bridge for watching and lightly steering Codex work on Windows.
 It is not a replacement for the Codex App.
+
+Delegated AI work does not always fail loudly.
+It may stop on an approval prompt, wait for a small decision, or need one short
+follow-up instruction.
 
 The Codex App or Codex CLI remains the main workspace for full transcripts,
 diff review, project selection, and rich task control.
@@ -13,7 +17,7 @@ pretending to be the full Codex interface.
 ## Product Positioning
 
 Use the Codex App or Codex CLI as the main workspace.
-Use `remotty` as the pocket remote.
+Use `remotty` as the Telegram bridge for short remote follow-ups.
 
 `remotty` should answer a few narrow questions quickly:
 
@@ -48,6 +52,7 @@ The `exec` transport remains available as an advanced fallback.
 
 `remotty` should not become:
 
+- an official remote-control surface
 - a full transcript UI
 - a rich diff viewer
 - an editor integration
