@@ -2,21 +2,30 @@
 
 # `remotty`
 
-![remotty: Codex と Telegram をつなぐ Windows ブリッジ](docs/assets/hero.png)
+![remotty: Windows 上の Codex 向け Telegram ブリッジ](docs/assets/hero.png)
 
-`remotty` は、汎用の遠隔操作ツールではありません。
-Windows 上の Codex 作業を、普段使う Telegram から続けるためのブリッジです。
+`remotty` は、Windows PC で動いている Codex に、Telegram から声をかけるための小さなブリッジです。
 
-`remotty` は、Telegram から Codex 作業の続きを進められるようにします。
-新しいモバイルアプリを入れる必要はありません。
+AI に作業を任せている時、いちばん困るのは「席を離れた瞬間に止まる」ことです。
+承認待ちかもしれません。
+エラーで止まっているかもしれません。
+あと一言だけ伝えれば、続きが進む場面もあります。
 
-Telegram bot へメッセージを送ります。
-`remotty` が Windows PC で受け取り、連携した `Codex CLI` セッションへ渡します。
+`remotty` は、そうした小さな確認と追加入力を Telegram から行うためのツールです。
+本格的な作業、差分の確認、長い指示は、Codex の主な作業画面、または `Codex CLI` の画面で行います。
+
+ここでいう「Codex の主な作業画面」は、特定のスマホアプリ名を指しているわけではありません。
+作業内容を読み、差分を確認し、まとまった指示を出すための画面全般を指しています。
+`remotty` はその画面を置き換えません。
+
+現在の公開手順では、`remotty` がつなぐ相手はローカルの `Codex CLI` セッションです。
+Telegram bot へ送った文を `remotty` が Windows PC で受け取り、連携した `Codex CLI` セッションへ渡します。
 返答は同じ Telegram チャットへ戻ります。
 
-`remotty` は公開 webhook サーバを使いません。
+`remotty` は公式のリモートコントロール機能ではありません。
+公開 webhook サーバも使いません。
 開いている Codex App 画面へキー入力もしません。
-ローカルの `codex` コマンドを通じて Codex とやり取りします。
+ローカルの `codex` コマンドと `app_server` 接続を通じて Codex とやり取りします。
 
 ## できること
 
@@ -31,7 +40,8 @@ Telegram bot へメッセージを送ります。
 
 ## 使う場面
 
-席を離れている時に、Windows PC 上の Codex 作業を Telegram から続けたい場合に使います。
+席を離れている時に、Windows PC 上の Codex 作業を Telegram から見守りたい場合に使います。
+承認待ちなら内容を確認し、必要なら短い追加入力を送ります。
 
 ## 必要なもの
 
@@ -61,7 +71,7 @@ npm install -g remotty
 
 その後、利用したいプロジェクトで [Telegram クイックスタート](docs/telegram-quickstart.ja.md) に沿って進めます。
 
-## はじめ方の流れ
+## 最初に知っておくこと
 
 設定コマンドを1つのスクリプトとしてまとめて貼らないでください。
 Telegram 連携では、`codex` と `remotty` の両方を起動したまま使うため、
@@ -106,6 +116,7 @@ Telegram から送るコマンドは次のとおりです。
 ## 関連ドキュメント
 
 - [Telegram クイックスタート](docs/telegram-quickstart.ja.md)
+- [Telegram ブリッジとしての方針](docs/remote-companion.ja.md)
 - [Fakechat デモ](docs/fakechat-demo.ja.md)
 - [高度な CLI モード](docs/exec-transport.ja.md)
 - [更新時の注意](docs/upgrading.ja.md)
