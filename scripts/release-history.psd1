@@ -360,5 +360,16 @@
                 "Removed the duplicate manual Codex thread selection step from the public Telegram quickstart."
             )
         }
+        @{
+            Version = "0.2.14"
+            Commit = "ed17a4566c67621ea057eea3310860bdfcb7b7e9"
+            Title = "Telegram bridge documentation and dependency refresh"
+            Notes = @(
+                "Reframed the public README and quickstart docs around Telegram bridge wording for non-engineer readers."
+                "Clarified that the main Codex workspace is not a specific mobile app and is not replaced by remotty."
+                "Updated the public hero image and public-surface tests to keep the Telegram bridge positioning consistent."
+                "Updated rpassword to 7.5.0 and rustls-webpki to 0.103.13."
+            )
+        }
     )
 }
