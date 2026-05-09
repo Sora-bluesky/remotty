@@ -368,7 +368,7 @@
                 "Reframed the public README and quickstart docs around Telegram bridge wording for non-engineer readers."
                 "Clarified that the main Codex workspace is not a specific mobile app and is not replaced by remotty."
                 "Updated the public hero image and public-surface tests to keep the Telegram bridge positioning consistent."
-                "Updated rpassword to 7.5.0 and rustls-webpki to 0.103.13."
+                "Updated dependency libraries, including rpassword 7.5.0 and rustls-webpki 0.103.13."
             )
         }
     )
