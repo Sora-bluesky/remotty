@@ -1,19 +1,23 @@
-# Remote Companion Direction
+# Telegram Bridge Direction
 
-`remotty` is a Telegram remote companion for Codex on Windows.
+`remotty` is a Telegram bridge for watching Codex work and sending short follow-ups on Windows.
 It is not a replacement for the Codex App.
+
+Delegated AI work does not always fail loudly.
+It may stop on an approval prompt, wait for a small decision, or need one short
+follow-up instruction.
 
 The Codex App or Codex CLI remains the main workspace for full transcripts,
 diff review, project selection, and rich task control.
 `remotty` stays focused on the smaller surface that is useful away from the desk:
-notifications, approval relay, concise status, and short steering messages.
+notifications, approval relay, concise status, and short follow-up messages.
 Its future direction is to fit Codex App Server based workflows without
 pretending to be the full Codex interface.
 
 ## Product Positioning
 
 Use the Codex App or Codex CLI as the main workspace.
-Use `remotty` as the pocket remote.
+Use `remotty` as the Telegram bridge for short remote follow-ups.
 
 `remotty` should answer a few narrow questions quickly:
 
@@ -21,7 +25,7 @@ Use `remotty` as the pocket remote.
 - What is it doing now?
 - Is approval required?
 - Should the run pause or continue?
-- Do I need to send one short steering message?
+- Do I need to send one short follow-up message?
 - Did the work finish or fail?
 
 ## Current Scope
@@ -67,7 +71,7 @@ Future work should keep the same product boundary:
 - attach Telegram chats to Codex threads
 - maintain a throttled live status card
 - relay approval requests with sender allowlist checks
-- support short steering messages for running turns
+- support short follow-up messages for running turns
 - summarize diffs and recent events without flooding Telegram
 - show goal state when the app-server API exposes it safely
 

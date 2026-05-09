@@ -1,9 +1,19 @@
 # Telegram Quickstart
 
-This guide sets up `remotty` as a Telegram remote companion for Codex CLI on Windows.
+This guide sets up `remotty` as a Telegram bridge for Codex CLI on Windows.
 `remotty` does not type into a Codex App window.
 It talks to local Codex through the local `codex` command and the local
 `app_server` transport.
+
+## What This Gives You
+
+AI work can stop while you are away from the keyboard.
+Codex may need approval, hit an error, or need one short follow-up instruction.
+
+`remotty` lets you check status, approve, deny, stop, or send a short follow-up
+from Telegram.
+It is not an official remote-control surface for the Codex App.
+Use the Codex App or Codex CLI for rich task control and detailed diff review.
 
 ## How It Works
 
@@ -16,8 +26,8 @@ It talks to local Codex through the local `codex` command and the local
 
 The current quickstart uses a local Codex CLI session.
 The product direction is to keep `remotty` focused on Telegram-based watching,
-approval relay, and short steering even as richer Codex App surfaces evolve.
-See [Remote Companion Direction](remote-companion.md).
+approval relay, and short follow-ups even as richer Codex App surfaces evolve.
+See [Telegram Bridge Direction](remote-companion.md).
 
 You will use these PowerShell windows:
 
@@ -169,6 +179,8 @@ The reply appears in Telegram.
 
 When Codex asks for approval, `remotty` posts the prompt to Telegram.
 Only allowed senders can approve.
+If you do not understand an approval request, do not approve it from Telegram.
+Check the local Codex screen first.
 
 ## Connection Q&A
 
@@ -214,5 +226,5 @@ Only allowed senders can approve.
 ## Related Docs
 
 - [Advanced CLI Mode](exec-transport.md)
-- [Remote Companion Direction](remote-companion.md)
+- [Telegram Bridge Direction](remote-companion.md)
 - [Upgrade Notes](upgrading.md)
