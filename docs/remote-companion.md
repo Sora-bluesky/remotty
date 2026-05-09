@@ -10,8 +10,8 @@ The main Codex workspace, or Codex CLI, remains the place for full transcripts,
 diff review, project selection, and rich task control.
 `remotty` stays focused on the smaller surface that is useful away from the desk:
 notifications, approval relay, concise status, and short follow-up messages.
-In these docs, Codex App means that main Codex workspace.
-It does not mean a specific mobile app.
+That workspace does not mean a specific mobile app.
+It means the place where you read work, review diffs, and give fuller instructions.
 `remotty` does not replace that workspace.
 Its future direction is to fit Codex App Server based workflows without
 pretending to be the full Codex interface.
