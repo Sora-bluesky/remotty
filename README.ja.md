@@ -113,7 +113,7 @@ Telegram から送るコマンドは次のとおりです。
 ## 関連ドキュメント
 
 - [Telegram クイックスタート](docs/telegram-quickstart.ja.md)
-- [リモート操作ブリッジとしての方針](docs/remote-companion.ja.md)
+- [Telegram ブリッジとしての方針](docs/remote-companion.ja.md)
 - [Fakechat デモ](docs/fakechat-demo.ja.md)
 - [高度な CLI モード](docs/exec-transport.ja.md)
 - [更新時の注意](docs/upgrading.ja.md)

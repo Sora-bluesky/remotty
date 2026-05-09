@@ -179,7 +179,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
 
     assert!(readme_ja.contains("連携した `Codex CLI` セッション"));
     assert!(readme_ja.contains("Telegram から声をかけるための小さなブリッジ"));
-    assert!(readme_ja.contains("リモート操作ブリッジとしての方針"));
+    assert!(readme_ja.contains("Telegram ブリッジとしての方針"));
     assert!(readme_ja.contains("Telegram クイックスタート"));
     assert!(readme_ja.contains("高度な CLI モード"));
     assert!(!readme_ja.contains("docs/development.ja.md"));
@@ -246,7 +246,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart_ja.contains("許可済み送信者"));
     assert!(quickstart_ja.contains("`remotty` に Codex App は必要ですか?"));
     assert!(quickstart_ja.contains("ペアリング済みで、allowlist に入った送信者だけ"));
-    assert!(quickstart_ja.contains("リモート操作ブリッジとしての方針"));
+    assert!(quickstart_ja.contains("Telegram ブリッジとしての方針"));
     assert!(!quickstart_ja.contains("writable_roots"));
     assert!(!quickstart_ja.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart_ja.contains(".agents/plugins/marketplace.json"));

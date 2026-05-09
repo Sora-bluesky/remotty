@@ -8,10 +8,10 @@
 It is a Telegram bridge for watching and lightly steering Codex work on Windows.
 
 The common failure mode for delegated AI work is simple: you walk away, and the
-run stops on an approval prompt or a small missing instruction.
+run stops on an approval prompt, an error, or a small missing instruction.
 `remotty` gives you a narrow Telegram surface for that moment.
 
-Use Codex CLI as the local session that `remotty` connects today.
+Use Codex CLI as the local session that `remotty` connects to today.
 Use the Codex App or Codex CLI for richer task control, diff review, and long
 instructions.
 Use `remotty` for Telegram notifications, approval relay, concise status, and

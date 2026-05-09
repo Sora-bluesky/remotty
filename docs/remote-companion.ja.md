@@ -1,4 +1,4 @@
-# リモート操作ブリッジとしての方針
+# Telegram ブリッジとしての方針
 
 `remotty` は、Windows 上の Codex 作業を Telegram から見守るためのブリッジです。
 Codex App の代替ではありません。
