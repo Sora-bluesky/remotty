@@ -2,22 +2,23 @@
 
 # remotty
 
-![remotty: Windows bridge for Codex and Telegram](docs/assets/hero.png)
+![remotty: Telegram remote companion for Codex on Windows](docs/assets/hero.png)
 
-`remotty` is not a general-purpose remote control tool.
-It is a bridge for continuing Codex work on Windows from the Telegram app you
-already use.
+`remotty` is not a replacement for the Codex App.
+It is a Telegram remote companion for Codex on Windows.
 
-`remotty` lets you continue Codex work from Telegram.
-There is no new mobile app to install.
+Use Codex CLI as the local session that `remotty` controls today.
+Use the Codex App for richer official Codex workflows.
+Use `remotty` when you want Telegram notifications, approval relay, short
+steering messages, and status checks while away from the full Codex interface.
 
 You send a message to your Telegram bot. `remotty` receives it on your Windows
 PC, sends it to the Codex CLI session you connected, and returns the reply to the same
 Telegram chat.
 
 `remotty` does not expose a public webhook server. It also does not type into
-the open Codex App window. It talks to local Codex through the local `codex`
-command.
+the open Codex App window. In the current public flow, it talks to local Codex
+through the local `codex` command and the `app_server` transport.
 
 ## What It Does
 
@@ -32,8 +33,8 @@ command.
 
 ## When To Use It
 
-Use `remotty` when you want to leave your desk and keep steering the Codex work
-that is available on your Windows PC.
+Use `remotty` when you want to leave your desk and keep watching, approving, or
+lightly steering Codex work that is running on your Windows PC.
 
 ## Requirements
 
@@ -112,6 +113,7 @@ Run these in Telegram:
 ## Related Docs
 
 - [Telegram Quickstart](docs/telegram-quickstart.md)
+- [Remote Companion Direction](docs/remote-companion.md)
 - [Fakechat Demo](docs/fakechat-demo.md)
 - [Advanced CLI Mode](docs/exec-transport.md)
 - [Upgrade Notes](docs/upgrading.md)
