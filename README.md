@@ -5,7 +5,7 @@
 ![remotty: Telegram bridge for Codex on Windows](docs/assets/hero.png)
 
 `remotty` is not a replacement for the Codex App.
-It is a Telegram bridge for watching and lightly steering Codex work on Windows.
+It is a Telegram bridge for watching Codex work and sending short follow-ups on Windows.
 
 The common failure mode for delegated AI work is simple: you walk away, and the
 run stops on an approval prompt, an error, or a small missing instruction.
@@ -40,7 +40,7 @@ command and the `app_server` transport.
 ## When To Use It
 
 Use `remotty` when you want to leave your desk and keep watching, approving, or
-lightly steering Codex work that is running on your Windows PC.
+sending short follow-ups to Codex work that is running on your Windows PC.
 
 ## Requirements
 
@@ -119,7 +119,7 @@ Run these in Telegram:
 ## Related Docs
 
 - [Telegram Quickstart](docs/telegram-quickstart.md)
-- [Remote Bridge Direction](docs/remote-companion.md)
+- [Telegram Bridge Direction](docs/remote-companion.md)
 - [Fakechat Demo](docs/fakechat-demo.md)
 - [Advanced CLI Mode](docs/exec-transport.md)
 - [Upgrade Notes](docs/upgrading.md)

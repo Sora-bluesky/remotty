@@ -145,9 +145,9 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(release_workflow.contains("npm publish ./release/remotty-*.tgz --access public"));
     assert!(readme.contains("docs/assets/hero.png"));
     assert!(quickstart.contains("npm install -g remotty"));
-    assert!(readme.contains("Telegram bridge for watching and lightly steering Codex work"));
+    assert!(readme.contains("Telegram bridge for watching Codex work and sending short follow-ups"));
     assert!(readme.contains("Codex CLI session you connected"));
-    assert!(readme.contains("Remote Bridge Direction"));
+    assert!(readme.contains("Telegram Bridge Direction"));
     assert!(readme.contains("Telegram Quickstart"));
     assert!(readme.contains("Advanced CLI Mode"));
     assert!(quickstart.contains("Listening for Telegram channel messages from: remotty:telegram"));
@@ -209,7 +209,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(quickstart.contains("paired senders"));
     assert!(quickstart.contains("Does `remotty` require Codex App?"));
     assert!(quickstart.contains("Only paired senders on the allowlist are accepted."));
-    assert!(quickstart.contains("Remote Bridge Direction"));
+    assert!(quickstart.contains("Telegram Bridge Direction"));
     assert!(!quickstart.contains("writable_roots"));
     assert!(!quickstart.contains("path = \"C:/Users/you/Documents/project\""));
     assert!(!quickstart.contains(".agents/plugins/marketplace.json"));
@@ -254,7 +254,7 @@ fn public_docs_explain_thread_setup_and_advanced_mode() -> Result<()> {
     assert!(exec_doc_ja.contains("transport = \"exec\""));
     assert!(upgrading.contains("transport = \"app_server\""));
     assert!(upgrading_ja.contains("transport = \"app_server\""));
-    assert!(remote_companion.contains("Telegram bridge for watching and lightly steering Codex work"));
+    assert!(remote_companion.contains("Telegram bridge for watching Codex work and sending short follow-ups"));
     assert!(remote_companion.contains("not a replacement for the Codex App"));
     assert!(remote_companion.contains("main workspace"));
     assert!(remote_companion.contains("Use `remotty` as the Telegram bridge"));

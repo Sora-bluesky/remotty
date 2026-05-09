@@ -26,8 +26,8 @@ Use the Codex App or Codex CLI for rich task control and detailed diff review.
 
 The current quickstart uses a local Codex CLI session.
 The product direction is to keep `remotty` focused on Telegram-based watching,
-approval relay, and short steering even as richer Codex App surfaces evolve.
-See [Remote Bridge Direction](remote-companion.md).
+approval relay, and short follow-ups even as richer Codex App surfaces evolve.
+See [Telegram Bridge Direction](remote-companion.md).
 
 You will use these PowerShell windows:
 
@@ -226,5 +226,5 @@ Check the local Codex screen first.
 ## Related Docs
 
 - [Advanced CLI Mode](exec-transport.md)
-- [Remote Bridge Direction](remote-companion.md)
+- [Telegram Bridge Direction](remote-companion.md)
 - [Upgrade Notes](upgrading.md)
