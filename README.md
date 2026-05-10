@@ -77,8 +77,8 @@ Rust is only needed when you build from source.
 
 Use the [Telegram Quickstart](docs/telegram-quickstart.md).
 
-It walks through installation, bot setup, token storage, pairing, channel
-startup, and a first Telegram test message.
+It walks through installation, bot setup, `remotty remote-control`, pairing,
+and a first Telegram test message.
 
 Want to try the local loop before making a Telegram bot?
 Use the [Fakechat Demo](docs/fakechat-demo.md).
@@ -97,22 +97,24 @@ project you want to use.
 
 ## Quickstart Overview
 
-Do not copy the setup commands as one script.
-The Telegram setup uses separate PowerShell windows because the `codex` and
-`remotty` processes both stay open while you use Telegram.
+The shortest path is to start Codex CLI for a project, then run
+`remotty remote-control` for the same project in another PowerShell window.
+On first run, `remotty` creates `%APPDATA%\remotty\bridge.toml`, registers the
+current project, and asks for your Telegram bot token.
 
 | Window | Keep it open? | Use it for |
 | --- | --- | --- |
-| Setup PowerShell | No | Install `remotty`, register the project, store the bot token, and pair Telegram. |
+| Normal PowerShell | No | Install `remotty` and finish Telegram pairing when needed. |
 | Codex PowerShell | Yes | Start `codex` in the project you want to continue from Telegram. |
-| Bridge PowerShell | Yes | Start `remotty --config "$env:APPDATA\remotty\bridge.toml"` for the same project. |
+| Remote Control PowerShell | Yes | Run `remotty remote-control` in the same project. |
 
 Follow the [Telegram Quickstart](docs/telegram-quickstart.md) for the exact
 step-by-step commands.
 
-When the bridge starts successfully, the terminal prints
+When remote control starts successfully, the terminal prints
+`Remote Control active` and
 `Listening for Telegram channel messages from: remotty:telegram`.
-Keep that Bridge PowerShell window open while you use Telegram.
+Keep that Remote Control PowerShell window open while you use Telegram.
 
 If you also use Codex App, the bundled plugin can help with setup tasks.
 The plugin is optional. The supported Telegram flow is the Codex CLI flow above:

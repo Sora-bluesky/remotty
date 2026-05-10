@@ -348,6 +348,8 @@ fn format_channel_startup_message(
         .collect::<Vec<_>>()
         .join(", ");
     [
+        "Remote Control active".to_owned(),
+        format!("remotty remote control is active - send a Telegram message to {bot_name}."),
         "Listening for Telegram channel messages from: remotty:telegram".to_owned(),
         format!("Telegram bot: {bot_name}"),
         format!(
@@ -4922,6 +4924,8 @@ mod tests {
 
         let message = format_channel_startup_message(&config, &bot);
 
+        assert!(message.contains("Remote Control active"));
+        assert!(message.contains("remotty remote control is active"));
         assert!(message.contains("Listening for Telegram channel messages from: remotty:telegram"));
         assert!(message.contains("Telegram bot: @remotty_bot"));
         assert!(message.contains("Codex transport: app_server"));

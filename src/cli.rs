@@ -6,7 +6,13 @@ const DEFAULT_CONFIG_PATH: &str = "bridge.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
-    Run { config_path: PathBuf },
+    Run {
+        config_path: PathBuf,
+    },
+    RemoteControl {
+        config_path: PathBuf,
+        workspace_path: PathBuf,
+    },
     Config(ConfigCommand),
     Demo(DemoCommand),
     Secret(SecretCommand),
@@ -101,6 +107,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand> 
         "telegram" => parse_telegram_command(&args[1..]),
         "demo" => parse_demo_command(&args[1..]),
         "config" => parse_config_command(&args[1..]),
+        "remote-control" => parse_remote_control_command(&args[1..]),
         "--config" => {
             let config_path = args
                 .get(1)
@@ -114,6 +121,45 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand> 
         }
         other => bail!("unknown command: {other}"),
     }
+}
+
+pub fn default_user_config_path() -> Result<PathBuf> {
+    let appdata = std::env::var_os("APPDATA")
+        .ok_or_else(|| anyhow::anyhow!("APPDATA is not set; pass --config <path>"))?;
+    if appdata.is_empty() {
+        bail!("APPDATA is empty; pass --config <path>");
+    }
+    Ok(PathBuf::from(appdata).join("remotty").join("bridge.toml"))
+}
+
+fn parse_remote_control_command(args: &[String]) -> Result<CliCommand> {
+    let usage = "usage: remote-control [--config <path>] [--path <dir>]";
+    let mut config_path = None;
+    let mut workspace_path = None;
+    let mut index = 0;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let value = args
+            .get(index + 1)
+            .ok_or_else(|| anyhow::anyhow!("missing value after {flag}"))?;
+        match flag {
+            "--config" => config_path = Some(PathBuf::from(value)),
+            "--path" => workspace_path = Some(PathBuf::from(value)),
+            other => bail!("unknown remote-control option: {other}. {usage}"),
+        }
+        index += 2;
+    }
+
+    Ok(CliCommand::RemoteControl {
+        config_path: match config_path {
+            Some(path) => path,
+            None => default_user_config_path()?,
+        },
+        workspace_path: match workspace_path {
+            Some(path) => path,
+            None => std::env::current_dir().context("failed to resolve current directory")?,
+        },
+    })
 }
 
 fn parse_config_command(args: &[String]) -> Result<CliCommand> {
@@ -355,6 +401,40 @@ mod tests {
                 .expect("config override should parse"),
             CliCommand::Run {
                 config_path: PathBuf::from("custom.toml"),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_remote_control_with_explicit_paths() {
+        assert_eq!(
+            parse_args(vec![
+                "remote-control".to_owned(),
+                "--config".to_owned(),
+                "prod/bridge.toml".to_owned(),
+                "--path".to_owned(),
+                "C:/work/app".to_owned(),
+            ])
+            .expect("remote-control should parse"),
+            CliCommand::RemoteControl {
+                config_path: PathBuf::from("prod/bridge.toml"),
+                workspace_path: PathBuf::from("C:/work/app"),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_args_supports_remote_control_with_current_directory() {
+        assert_eq!(
+            parse_args(vec![
+                "remote-control".to_owned(),
+                "--config".to_owned(),
+                "prod/bridge.toml".to_owned(),
+            ])
+            .expect("remote-control should parse"),
+            CliCommand::RemoteControl {
+                config_path: PathBuf::from("prod/bridge.toml"),
+                workspace_path: std::env::current_dir().expect("current directory should resolve"),
             }
         );
     }

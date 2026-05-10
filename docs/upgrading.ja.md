@@ -15,7 +15,7 @@
 transport = "app_server"
 ```
 
-これで、そのプロジェクトで起動した `remotty --config "$env:APPDATA\remotty\bridge.toml"` のプロセスを通じて、
+これで、そのプロジェクトで起動した `remotty remote-control` のプロセスを通じて、
 Telegram から `Codex CLI` セッションを続けられます。
 
 ## 設定が `exec` の場合
