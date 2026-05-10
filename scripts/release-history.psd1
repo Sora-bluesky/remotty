@@ -373,7 +373,7 @@
         }
         @{
             Version = "0.2.15"
-            Commit = "7962ad6f0378716fbb06aeaece0d7d57fbac2c65"
+            Commit = "58c4255ca36758be1cfd2bf7d4f2871bfc17a621"
             Title = "Telegram input prompt answers"
             Notes = @(
                 "Updated GitHub Actions workflows to the Node 24 runtime."
