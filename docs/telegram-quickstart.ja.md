@@ -180,6 +180,26 @@ Codex が承認を求めると、`remotty` は Telegram へ中継します。
 分からない承認は、その場で許可しないでください。
 手元の Codex 画面で内容を確認してから判断します。
 
+### Codex の追加入力
+
+Codex が短い追加入力を求めた場合は、Telegram 通知に表示された `request_id` を使い、`/answer <request_id> <value>` で返せます。
+
+```text
+/answer request-123 docs
+```
+
+入力欄が複数ある場合は、Telegram 通知に各入力欄の `id` が表示されます。
+1つの Telegram メッセージにまとめ、各行に `id=value` の形で書きます。
+
+```text
+/answer request-123 target=docs
+mode=review
+```
+
+`remotty` は、Codex が秘密入力として示した要求を Telegram からは受け付けません。
+Telegram のメッセージはチャット履歴として扱い、パスワード、API キー、リカバリーコードなどの秘密情報を `/answer` で送らないでください。
+Codex が秘密入力を求めた場合は、手元の Codex 画面で入力してください。
+
 ## 接続の Q&A
 
 > Q. Telegram とつながっているか、どこで分かりますか?

@@ -59,6 +59,10 @@ pub enum TelegramControlCommand {
     Deny {
         request_id: String,
     },
+    Answer {
+        request_id: String,
+        answer: String,
+    },
     Workspace {
         workspace_id: Option<String>,
     },
@@ -905,6 +909,17 @@ pub fn parse_control_command(text: &str) -> Option<TelegramControlCommand> {
         }
         return Some(TelegramControlCommand::Deny { request_id });
     }
+    if command.eq_ignore_ascii_case("answer") {
+        let request_id = parts.next()?.trim().to_owned();
+        if request_id.is_empty() {
+            return None;
+        }
+        let answer = rest[request_id.len()..].trim().to_owned();
+        if answer.is_empty() {
+            return None;
+        }
+        return Some(TelegramControlCommand::Answer { request_id, answer });
+    }
     if command.eq_ignore_ascii_case("workspace") {
         let workspace_id = parts.next().map(|value| value.trim().to_owned());
         if parts.next().is_some() {
@@ -1535,6 +1550,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_answer_command() {
+        assert_eq!(
+            parse_control_command("/answer req-3 choose option A"),
+            Some(TelegramControlCommand::Answer {
+                request_id: "req-3".to_owned(),
+                answer: "choose option A".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_control_command("/answer req-4 target=docs\nmode=review"),
+            Some(TelegramControlCommand::Answer {
+                request_id: "req-4".to_owned(),
+                answer: "target=docs\nmode=review".to_owned(),
+            })
+        );
+    }
+
+    #[test]
     fn parses_callback_query_as_control_command() {
         let messages = parse_updates_response(
             r#"{
@@ -1597,6 +1630,7 @@ mod tests {
         assert_eq!(parse_control_command("/stop now"), None);
         assert_eq!(parse_control_command("/approve req extra"), None);
         assert_eq!(parse_control_command("/deny req extra"), None);
+        assert_eq!(parse_control_command("/answer req"), None);
         assert_eq!(parse_control_command("/workspace docs extra"), None);
     }
 
