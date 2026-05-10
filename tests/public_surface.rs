@@ -138,7 +138,8 @@ fn npm_package_keeps_binary_install_contract() -> Result<()> {
     assert!(configure_skill.contains("PowerShell window"));
     assert!(start_skill.contains("remotty service start"));
     assert!(status_skill.contains("remotty telegram policy allowlist"));
-    assert!(release_workflow.contains("actions/setup-node@v4"));
+    assert!(release_workflow.contains("actions/setup-node@v6"));
+    assert!(release_workflow.contains("node-version: 24"));
     assert!(release_workflow.contains("npm pack --pack-destination release"));
     assert!(release_workflow.contains("cp release/remotty-*.tgz release/remotty.tgz"));
     assert!(release_workflow.contains("NPM_TOKEN: ${{ secrets.NPM_TOKEN }}"));
