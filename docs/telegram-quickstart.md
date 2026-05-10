@@ -182,6 +182,29 @@ Only allowed senders can approve.
 If you do not understand an approval request, do not approve it from Telegram.
 Check the local Codex screen first.
 
+### Codex Input Requests
+
+Some Codex prompts ask for one short piece of additional input.
+Use the `request_id` shown in the Telegram notification and reply with
+`/answer <request_id> <value>`:
+
+```text
+/answer request-123 docs
+```
+
+If the prompt has several fields, the Telegram notification shows each field
+ID. Send one Telegram message and put each answer on its own `id=value` line:
+
+```text
+/answer request-123 target=docs
+mode=review
+```
+
+`remotty` rejects Codex input requests marked as secret.
+Treat Telegram messages as chat history: do not send passwords, API keys,
+recovery codes, or other secrets with `/answer`.
+If Codex asks for secret input, use the local Codex screen.
+
 ## Connection Q&A
 
 > Q. How do I know Telegram is connected?

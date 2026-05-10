@@ -153,8 +153,10 @@ impl CodexRunner {
                 self.run_command(args, &workspace.path).await
             }
             CodexTransport::AppServer => {
-                let mut client = AppServerClient::spawn(&self.config).await?;
+                let mut client = self.ensure_app_server().await?;
                 client
+                    .as_mut()
+                    .expect("app-server should exist")
                     .start_turn(
                         &self.config,
                         workspace,
@@ -208,8 +210,10 @@ impl CodexRunner {
                 self.run_command(args, &workspace.path).await
             }
             CodexTransport::AppServer => {
-                let mut client = AppServerClient::spawn(&self.config).await?;
+                let mut client = self.ensure_app_server().await?;
                 client
+                    .as_mut()
+                    .expect("app-server should exist")
                     .resume_turn(
                         &self.config,
                         workspace,
@@ -234,6 +238,28 @@ impl CodexRunner {
             .expect("app-server should exist")
             .resolve_approval(request, approved)
             .await
+    }
+
+    pub async fn resolve_tool_user_input(
+        &self,
+        request: &ApprovalRequestRecord,
+        answer_text: &str,
+        followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
+    ) -> Result<CodexOutcome> {
+        let mut client = self.ensure_app_server().await?;
+        client
+            .as_mut()
+            .expect("app-server should exist")
+            .resolve_tool_user_input(request, answer_text, followups)
+            .await
+    }
+
+    pub async fn has_app_server(&self) -> bool {
+        self.app_server.lock().await.is_some()
+    }
+
+    pub async fn reset_app_server(&self) {
+        self.app_server.lock().await.take();
     }
 
     pub async fn list_threads(

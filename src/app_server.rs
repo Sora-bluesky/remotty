@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::process::Stdio;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -149,6 +149,26 @@ impl AppServerClient {
         approved: bool,
     ) -> Result<CodexOutcome> {
         let response = approval_response(request, approved)?;
+        self.resolve_server_request(request, response, None).await
+    }
+
+    pub async fn resolve_tool_user_input(
+        &mut self,
+        request: &ApprovalRequestRecord,
+        answer_text: &str,
+        followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
+    ) -> Result<CodexOutcome> {
+        let response = tool_user_input_response(request, answer_text)?;
+        self.resolve_server_request(request, response, followups)
+            .await
+    }
+
+    async fn resolve_server_request(
+        &mut self,
+        request: &ApprovalRequestRecord,
+        response: Value,
+        followups: Option<mpsc::UnboundedReceiver<CodexFollowupRequest>>,
+    ) -> Result<CodexOutcome> {
         self.send_json_with_timeout(
             &json!({
             "id": request.transport_request_id,
@@ -158,7 +178,7 @@ impl AppServerClient {
             "approval response",
         )
         .await?;
-        self.read_until_pause_or_completion(&request.thread_id, &request.turn_id, None)
+        self.read_until_pause_or_completion(&request.thread_id, &request.turn_id, followups)
             .await
     }
 
@@ -889,6 +909,86 @@ fn approval_response(request: &ApprovalRequestRecord, approved: bool) -> Result<
     Ok(response)
 }
 
+fn tool_user_input_response(request: &ApprovalRequestRecord, answer_text: &str) -> Result<Value> {
+    if request.request_kind != ApprovalRequestKind::ToolUserInput {
+        bail!("approval request is not a tool user input request");
+    }
+    let raw_payload: Value = serde_json::from_str(&request.raw_payload_json)
+        .context("invalid tool user input payload JSON")?;
+    let questions = raw_payload
+        .get("questions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("tool user input payload missing questions"))?;
+    if questions.is_empty() {
+        bail!("tool user input payload has no questions");
+    }
+
+    let expected_ids = questions
+        .iter()
+        .filter_map(|question| question.get("id").and_then(Value::as_str))
+        .filter(|id| !id.trim().is_empty())
+        .collect::<Vec<_>>();
+    let keyed_answers = parse_keyed_tool_user_input_answers(answer_text);
+    let mut answers = serde_json::Map::new();
+    for question in questions {
+        let id = question
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| anyhow!("tool user input question missing id"))?;
+        if question
+            .get("isSecret")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            bail!("secret tool user input `{id}` cannot be answered from Telegram");
+        }
+
+        let answer = if questions.len() == 1 {
+            answer_text.trim().to_owned()
+        } else {
+            keyed_answers.get(id).cloned().ok_or_else(|| {
+                anyhow!(
+                    "answer for question `{id}` is missing; use `id=value` on separate lines for: {}",
+                    expected_ids.join(", ")
+                )
+            })?
+        };
+        if answer.trim().is_empty() {
+            bail!("answer for question `{id}` is empty");
+        }
+        answers.insert(id.to_owned(), json!({ "answers": [answer] }));
+    }
+
+    Ok(json!({ "answers": Value::Object(answers) }))
+}
+
+pub(crate) fn validate_tool_user_input_answer(
+    request: &ApprovalRequestRecord,
+    answer_text: &str,
+) -> Result<()> {
+    tool_user_input_response(request, answer_text).map(|_| ())
+}
+
+fn parse_keyed_tool_user_input_answers(answer_text: &str) -> HashMap<String, String> {
+    let mut answers = HashMap::new();
+    for line in answer_text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if !key.is_empty() && !value.is_empty() {
+            answers.insert(key.to_owned(), value.to_owned());
+        }
+    }
+    answers
+}
+
 fn summarize_command_approval(params: &Value) -> String {
     let command = params
         .get("command")
@@ -936,19 +1036,73 @@ fn summarize_tool_user_input(params: &Value) -> String {
 
     let mut lines = vec![format!("追加の入力待ち: 質問数 {}", questions.len())];
     for (index, question) in questions.iter().take(3).enumerate() {
+        let is_secret = question
+            .get("isSecret")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let id = question
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty());
+        let id_text = id
+            .map(|value| format!("id `{value}`"))
+            .unwrap_or_else(|| "id なし".to_owned());
+        if is_secret {
+            lines.push(format!(
+                "{}. {}: 秘密入力（ローカル画面で入力）",
+                index + 1,
+                id_text
+            ));
+            continue;
+        }
+
+        let prompt = question
+            .get("question")
+            .and_then(Value::as_str)
+            .or_else(|| question.get("header").and_then(Value::as_str))
+            .map(|value| summarize_inline_text(value, 80));
         let option_count = question
             .get("options")
             .and_then(Value::as_array)
             .map(Vec::len)
             .unwrap_or(0);
+        let option_labels = summarize_tool_user_input_options(question);
+        let prompt_text = prompt.unwrap_or_else(|| "追加入力".to_owned());
         if option_count == 0 {
-            lines.push(format!("{}. 追加入力あり", index + 1));
+            lines.push(format!("{}. {}: {}", index + 1, id_text, prompt_text));
             continue;
         }
 
-        lines.push(format!("{}. 選択肢 {} 件", index + 1, option_count));
+        lines.push(format!(
+            "{}. {}: {}（選択肢 {} 件{}）",
+            index + 1,
+            id_text,
+            prompt_text,
+            option_count,
+            option_labels
+                .map(|labels| format!(": {labels}"))
+                .unwrap_or_default()
+        ));
     }
     summarize_multiline_text(&lines.join("\n"), 320)
+}
+
+fn summarize_tool_user_input_options(question: &Value) -> Option<String> {
+    let labels = question
+        .get("options")?
+        .as_array()?
+        .iter()
+        .filter_map(|option| option.get("label").and_then(Value::as_str))
+        .filter(|label| !label.trim().is_empty())
+        .take(3)
+        .map(|label| summarize_inline_text(label, 30))
+        .collect::<Vec<_>>();
+    (!labels.is_empty()).then(|| labels.join(", "))
+}
+
+fn summarize_inline_text(text: &str, max_chars: usize) -> String {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    summarize_multiline_text(&text, max_chars)
 }
 
 fn summarize_multiline_text(text: &str, max_chars: usize) -> String {
@@ -1089,7 +1243,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_user_input_request_with_safe_summary() {
+    fn parses_tool_user_input_request_with_visible_summary() {
         let request = parse_approval_request(&json!({
             "id": "req-3",
             "method": "item/tool/requestUserInput",
@@ -1099,7 +1253,9 @@ mod tests {
                 "itemId": "item-1",
                 "questions": [
                     {
+                        "id": "confirm_path",
                         "question": "Approve app tool call?",
+                        "isSecret": false,
                         "options": [
                             { "label": "Allow once" },
                             { "label": "Allow for session" },
@@ -1107,7 +1263,9 @@ mod tests {
                         ]
                     },
                     {
+                        "id": "remember_choice",
                         "question": "Remember this choice?",
+                        "isSecret": false,
                         "options": [
                             { "label": "Yes" },
                             { "label": "No" }
@@ -1121,12 +1279,61 @@ mod tests {
 
         assert_eq!(request.request_kind, ApprovalRequestKind::ToolUserInput);
         assert!(request.summary_text.contains("追加の入力待ち: 質問数 2"));
-        assert!(request.summary_text.contains("1. 選択肢 3 件"));
-        assert!(request.summary_text.contains("2. 選択肢 2 件"));
-        assert!(!request.summary_text.contains("Approve app tool call?"));
-        assert!(!request.summary_text.contains("Allow once"));
-        assert!(!request.summary_text.contains("Remember this choice?"));
-        assert!(!request.summary_text.contains("Yes"));
+        assert!(request.summary_text.contains("id `confirm_path`"));
+        assert!(request.summary_text.contains("Approve app tool call?"));
+        assert!(request.summary_text.contains("Allow once"));
+        assert!(request.summary_text.contains("id `remember_choice`"));
+        assert!(request.summary_text.contains("Remember this choice?"));
+        assert!(request.summary_text.contains("Yes"));
+    }
+
+    #[test]
+    fn parses_tool_user_input_summary_keeps_full_question_id() {
+        let long_id = "field_abcdefghijklmnopqrstuvwxyz_0123456789_extra";
+        let request = parse_approval_request(&json!({
+            "id": "req-long-id",
+            "method": "item/tool/requestUserInput",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "questions": [{
+                    "id": long_id,
+                    "question": "Target?",
+                    "isSecret": false
+                }]
+            }
+        }))
+        .expect("approval should parse")
+        .expect("approval should exist");
+
+        assert!(request.summary_text.contains(&format!("id `{long_id}`")));
+        assert!(!request.summary_text.contains('…'));
+    }
+
+    #[test]
+    fn parses_secret_tool_user_input_without_leaking_prompt() {
+        let request = parse_approval_request(&json!({
+            "id": "req-4",
+            "method": "item/tool/requestUserInput",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "questions": [{
+                    "id": "token",
+                    "question": "Paste the API token",
+                    "isSecret": true
+                }]
+            }
+        }))
+        .expect("approval should parse")
+        .expect("approval should exist");
+
+        assert_eq!(request.request_kind, ApprovalRequestKind::ToolUserInput);
+        assert!(request.summary_text.contains("id `token`"));
+        assert!(request.summary_text.contains("秘密入力"));
+        assert!(!request.summary_text.contains("Paste the API token"));
     }
 
     #[test]
@@ -1234,6 +1441,226 @@ mod tests {
                 },
                 "scope": "turn",
             })
+        );
+    }
+
+    #[test]
+    fn builds_tool_user_input_response_for_single_question() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-3".to_owned(),
+            transport_request_id: "transport-req-3".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "input".to_owned(),
+            raw_payload_json: json!({
+                "questions": [{
+                    "id": "confirm_path",
+                    "header": "Path",
+                    "question": "Use this path?",
+                    "isSecret": false
+                }]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let response = tool_user_input_response(&request, "yes").expect("response should build");
+        assert_eq!(
+            response,
+            json!({
+                "answers": {
+                    "confirm_path": { "answers": ["yes"] }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn single_tool_user_input_preserves_key_value_text() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-3".to_owned(),
+            transport_request_id: "transport-req-3".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "input".to_owned(),
+            raw_payload_json: json!({
+                "questions": [{
+                    "id": "token_text",
+                    "question": "Token text?",
+                    "isSecret": false
+                }]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let response = tool_user_input_response(&request, "KEY=https://example.com:8443/path")
+            .expect("response should build");
+        assert_eq!(
+            response,
+            json!({
+                "answers": {
+                    "token_text": { "answers": ["KEY=https://example.com:8443/path"] }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn builds_tool_user_input_response_for_multiple_questions() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-4".to_owned(),
+            transport_request_id: "transport-req-4".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "input".to_owned(),
+            raw_payload_json: json!({
+                "questions": [
+                    { "id": "target", "question": "Target?", "isSecret": false },
+                    { "id": "mode", "question": "Mode?", "isSecret": false }
+                ]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let response = tool_user_input_response(&request, "target=docs\nmode=review")
+            .expect("response should build");
+        assert_eq!(
+            response,
+            json!({
+                "answers": {
+                    "target": { "answers": ["docs"] },
+                    "mode": { "answers": ["review"] }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_multiple_tool_user_input_missing_question_id_with_expected_ids() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-4".to_owned(),
+            transport_request_id: "transport-req-4".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "input".to_owned(),
+            raw_payload_json: json!({
+                "questions": [
+                    { "id": "target", "question": "Target?", "isSecret": false },
+                    { "id": "mode", "question": "Mode?", "isSecret": false }
+                ]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let error = tool_user_input_response(&request, "target=docs")
+            .expect_err("missing answer should be rejected");
+        let message = error.to_string();
+        assert!(message.contains("mode"));
+        assert!(message.contains("target, mode"));
+    }
+
+    #[test]
+    fn rejects_tool_user_input_response_for_wrong_request_kind() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-6".to_owned(),
+            transport_request_id: "transport-req-6".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::CommandExecution,
+            summary_text: "command".to_owned(),
+            raw_payload_json: json!({
+                "questions": [{ "id": "target", "question": "Target?" }]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let error = tool_user_input_response(&request, "target=docs")
+            .expect_err("wrong request kind should be rejected");
+        assert!(error.to_string().contains("not a tool user input request"));
+    }
+
+    #[test]
+    fn rejects_secret_tool_user_input_from_telegram() {
+        let request = ApprovalRequestRecord {
+            request_id: "req-5".to_owned(),
+            transport_request_id: "transport-req-5".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: crate::store::ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "input".to_owned(),
+            raw_payload_json: json!({
+                "questions": [{
+                    "id": "token",
+                    "question": "Token?",
+                    "isSecret": true
+                }]
+            })
+            .to_string(),
+            status: crate::store::ApprovalRequestStatus::Pending,
+            requested_at_ms: 0,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let error = tool_user_input_response(&request, "secret")
+            .expect_err("secret input should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot be answered from Telegram")
         );
     }
 

@@ -14,7 +14,7 @@ use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::app_server::CodexThreadSummary;
+use crate::app_server::{CodexThreadSummary, validate_tool_user_input_answer};
 use crate::codex::{
     ActiveAppServerTurnPersistence, CodexFollowupRequest, CodexRequest, CodexRunner,
 };
@@ -22,8 +22,9 @@ use crate::config::{
     CodexTransport, Config, LaneMode, checks::CheckRunSummary, checks::run_profile,
 };
 use crate::store::{
-    ApprovalRequestStatus, ApprovalRequestTransport, CodexThreadBinding, FollowupInputRecord,
-    LaneRecord, LaneState, NewCodexThreadBinding, NewFollowupInput, NewRun, Store,
+    ApprovalRequestKind, ApprovalRequestStatus, ApprovalRequestTransport, CodexThreadBinding,
+    FollowupInputRecord, LaneRecord, LaneState, NewCodexThreadBinding, NewFollowupInput, NewRun,
+    Store,
 };
 use crate::telegram::{
     IncomingMessage, SavedTelegramAttachment, TelegramAttachmentKind, TelegramClient,
@@ -426,6 +427,23 @@ async fn handle_message(
                 };
                 (result.map(|reply| reply.reply_text), Some(callback_text))
             }
+            TelegramControlCommand::Answer { request_id, answer } => {
+                let result = handle_tool_user_input_answer_message(
+                    config,
+                    store,
+                    telegram,
+                    codex,
+                    active_turns,
+                    sender_id,
+                    update.chat_id,
+                    &update.thread_key,
+                    existing_lane.as_ref(),
+                    &request_id,
+                    &answer,
+                )
+                .await;
+                (result.map(|reply| reply.reply_text), None)
+            }
             TelegramControlCommand::Sessions { thread_id } => {
                 let result = handle_sessions_command(
                     store,
@@ -697,9 +715,13 @@ async fn handle_message(
         }
     };
     let initial_result = if is_app_server_resume {
-        timeout(APP_SERVER_RESUME_RUN_TIMEOUT, initial_future)
-            .await
-            .map_err(|_| anyhow!("app-server resume run timed out"))?
+        match timeout(APP_SERVER_RESUME_RUN_TIMEOUT, initial_future).await {
+            Ok(result) => result,
+            Err(_) => {
+                codex.reset_app_server().await;
+                Err(anyhow!("app-server resume run timed out"))
+            }
+        }
     } else {
         initial_future.await
     };
@@ -927,7 +949,7 @@ async fn process_followup_input(
         run.run_id.clone(),
     );
     let request = build_user_request(&input.body_text, &[], lane.mode, &workspace.continue_prompt);
-    let result = timeout(
+    let result = match timeout(
         APP_SERVER_RESUME_RUN_TIMEOUT,
         codex.resume_with_followups_and_turn_sender(
             workspace,
@@ -938,7 +960,13 @@ async fn process_followup_input(
         ),
     )
     .await
-    .map_err(|_| anyhow!("app-server queued follow-up run timed out"))?;
+    {
+        Ok(result) => result,
+        Err(_) => {
+            codex.reset_app_server().await;
+            Err(anyhow!("app-server queued follow-up run timed out"))
+        }
+    };
     drop(guard);
 
     let initial_outcome = match result {
@@ -1134,7 +1162,9 @@ fn handle_control_command(
             "This internal path does not handle session selection. Use the async handler."
                 .to_owned(),
         ),
-        TelegramControlCommand::Approve { .. } | TelegramControlCommand::Deny { .. } => Ok(
+        TelegramControlCommand::Approve { .. }
+        | TelegramControlCommand::Deny { .. }
+        | TelegramControlCommand::Answer { .. } => Ok(
             "This internal path does not handle approval decisions. Use a normal Telegram message or button."
                 .to_owned(),
         ),
@@ -1264,6 +1294,360 @@ fn title_contains(thread: &CodexThreadSummary, query: &str) -> bool {
         .title
         .as_deref()
         .map(|title| normalize_thread_lookup(title).contains(&query))
+        .unwrap_or(false)
+}
+
+async fn handle_tool_user_input_answer_message(
+    config: &Config,
+    store: &Store,
+    telegram: &impl TelegramApi,
+    codex: &CodexRunner,
+    active_turns: &ActiveTurnRegistry,
+    sender_id: i64,
+    chat_id: i64,
+    thread_key: &str,
+    lane: Option<&LaneRecord>,
+    request_id: &str,
+    answer_text: &str,
+) -> Result<ApprovalDecisionReply> {
+    let request = match find_approval_request_for_locator(store, request_id)? {
+        ApprovalRequestLookup::Found(request) => request,
+        ApprovalRequestLookup::Stale(request) => {
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "Approval request `{}` is stale. Use the latest notification.",
+                    request.request_id
+                ),
+                "This request is stale. Use the latest notification.",
+            ));
+        }
+        ApprovalRequestLookup::Missing => {
+            return Ok(ApprovalDecisionReply::new(
+                format!("Approval request `{request_id}` was not found."),
+                "Approval request not found.".to_owned(),
+            ));
+        }
+    };
+    let request_id = request.request_id.as_str();
+    let Some(lane) = lane else {
+        return Ok(ApprovalDecisionReply::new(
+            "This chat has no lane for the input request.",
+            "This chat cannot handle that request.",
+        ));
+    };
+    if lane.lane_id != request.lane_id {
+        return Ok(ApprovalDecisionReply::new(
+            "This input request belongs to a different chat.",
+            "Wrong chat for this request.",
+        ));
+    }
+    let current_lane = store
+        .find_lane(chat_id, thread_key)?
+        .ok_or_else(|| anyhow!("input request lane not found"))?;
+    if current_lane.lane_id != request.lane_id {
+        return Ok(ApprovalDecisionReply::new(
+            "This input request belongs to a different chat.",
+            "Wrong chat for this request.",
+        ));
+    }
+    if request.request_kind != ApprovalRequestKind::ToolUserInput {
+        return Ok(ApprovalDecisionReply::new(
+            format!("Approval request `{request_id}` is not waiting for additional input."),
+            "This request is not waiting for input.".to_owned(),
+        ));
+    }
+    if request.status == ApprovalRequestStatus::Dispatching {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was just sent. Wait a few seconds and try again."
+            ),
+            "Wait a few seconds and try again.",
+        ));
+    }
+    if request.status != ApprovalRequestStatus::Pending {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was already handled. Current status: `{}`",
+                approval_status_name(request.status)
+            ),
+            format!("Already `{}`.", approval_status_name(request.status)),
+        ));
+    }
+    if request.transport != ApprovalRequestTransport::AppServer {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` cannot accept additional input without `app_server`."
+            ),
+            "`app_server` is required for this input request.".to_owned(),
+        ));
+    }
+    if request.transport_request_id.trim().is_empty() {
+        let _ = store.expire_approval_request(request_id, &lane.lane_id, &request.run_id)?;
+        if let Some(message_id) = request.telegram_message_id {
+            let text = format!(
+                "Approval request `{request_id}` used an old format and was invalidated. Send the original request again."
+            );
+            let _ = telegram
+                .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
+                .await;
+        }
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` uses an old format and cannot continue. Send the original request again."
+            ),
+            "Old-format request invalidated.".to_owned(),
+        ));
+    }
+    if tool_user_input_has_secret_question(&request) {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` asks for secret input and cannot be answered from Telegram. Use the local Codex screen."
+            ),
+            "Secret input requires the local Codex screen.".to_owned(),
+        ));
+    }
+    if let Err(error) = validate_tool_user_input_answer(&request, answer_text) {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` could not use that answer: {error:#}. Send `/answer {request_id} ...` again."
+            ),
+            "Answer format is invalid. Try again.".to_owned(),
+        ));
+    }
+    if !codex.has_app_server().await {
+        let _ = store.invalidate_approval_request(request_id)?;
+        store.update_lane_state(
+            &lane.lane_id,
+            LaneState::WaitingReply,
+            Some(&request.thread_id),
+        )?;
+        if let Some(message_id) = request.telegram_message_id {
+            let text = format!(
+                "Approval request `{request_id}` cannot continue because the app-server connection was restarted. Send the original request again."
+            );
+            let _ = telegram
+                .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
+                .await;
+        }
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` cannot continue because the app-server connection was restarted. Use the local Codex screen or send the original request again."
+            ),
+            "App-server connection was restarted.".to_owned(),
+        ));
+    }
+
+    let workspace = resolve_workspace(config, Some(lane))?;
+    let updated = store.begin_approval_resolution(request_id, sender_id)?;
+    if !updated {
+        let current_status = store
+            .find_approval_request(request_id)?
+            .map(|current| approval_status_name(current.status).to_owned())
+            .unwrap_or_else(|| "unknown".to_owned());
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was already handled. Current status: `{current_status}`"
+            ),
+            format!("Already `{current_status}`."),
+        ));
+    }
+    let run = store.insert_run(NewRun {
+        lane_id: lane.lane_id.clone(),
+        run_kind: "tool_input_resume".to_owned(),
+    })?;
+    store.update_lane_state(&lane.lane_id, LaneState::Running, Some(&request.thread_id))?;
+    store.update_lane_active_turn(
+        &lane.lane_id,
+        &run.run_id,
+        &request.thread_id,
+        &request.turn_id,
+    )?;
+    let key = active_turn_key(&lane.lane_id, Some(&request.thread_id));
+    let (active_turn_guard, followups) = active_turns.register(&key);
+    let continued_outcome = match codex
+        .resolve_tool_user_input(&request, answer_text, Some(followups))
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            warn!(
+                "failed to resume app-server turn after tool input {}: {error:#}",
+                request_id
+            );
+            let _ =
+                store.fail_resolving_approval_request(request_id, &lane.lane_id, &run.run_id)?;
+            if let Some(message_id) = request.telegram_message_id {
+                let text = format!(
+                    "Approval request `{request_id}` has an unknown continuation result. Check local logs before deciding what to do."
+                );
+                let _ = telegram
+                    .edit_message_clearing_inline_keyboard(chat_id, message_id, &text)
+                    .await;
+            }
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "Approval request `{request_id}` has an unknown continuation result. Check local logs and do not resend until the state is clear."
+                ),
+                "Continuation result unknown. Check local logs.".to_owned(),
+            ));
+        }
+    };
+    drop(active_turn_guard);
+    let resolved =
+        store.resolve_approval_request(request_id, ApprovalRequestStatus::Approved, sender_id)?;
+    if !resolved {
+        let current_status = store
+            .find_approval_request(request_id)?
+            .map(|current| approval_status_name(current.status).to_owned())
+            .unwrap_or_else(|| "unknown".to_owned());
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was already handled. Current status: `{current_status}`"
+            ),
+            format!("Already `{current_status}`."),
+        ));
+    }
+    if let Some(message_id) = request.telegram_message_id {
+        let status_text = format!("Approval request `{request_id}` was answered.");
+        let _ = telegram
+            .edit_message_clearing_inline_keyboard(chat_id, message_id, &status_text)
+            .await;
+    }
+
+    let continued_session_id = continued_outcome.session_id.clone();
+    let (outcome, unresolved_checks, auto_turns_completed) = match continue_lane_after_completion(
+        config,
+        workspace,
+        codex,
+        lane,
+        continued_outcome,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            warn!(
+                "failed to finish post-input processing for {}: {error:#}",
+                request_id
+            );
+            store.update_lane_state(
+                &lane.lane_id,
+                LaneState::Failed,
+                continued_session_id.as_deref(),
+            )?;
+            return Ok(ApprovalDecisionReply::new(
+                format!(
+                    "Approval request `{request_id}` was answered, but post-input processing failed. Check local logs."
+                ),
+                "Post-input processing failed. Check local logs.".to_owned(),
+            ));
+        }
+    };
+
+    let next_state = if outcome.approval_pending {
+        LaneState::NeedsLocalApproval
+    } else if unresolved_checks.is_some() {
+        LaneState::Failed
+    } else {
+        LaneState::WaitingReply
+    };
+    if let Err(_error) = persist_approval_requests(
+        store,
+        telegram,
+        chat_id,
+        &lane.lane_id,
+        &run.run_id,
+        config.codex.transport,
+        &outcome.approval_requests,
+    )
+    .await
+    {
+        let _ = store.finish_run(
+            &run.run_id,
+            outcome.exit_code,
+            LaneState::Failed.as_str(),
+            false,
+            outcome.approval_request_count,
+            outcome.approval_resolved_count,
+        );
+        store.update_lane_state(
+            &lane.lane_id,
+            LaneState::Failed,
+            outcome.session_id.as_deref(),
+        )?;
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was answered, but saving the next approval notification failed. Check local logs."
+            ),
+            "Failed to save the next approval notification.".to_owned(),
+        ));
+    }
+    store.update_lane_state(&lane.lane_id, next_state, outcome.session_id.as_deref())?;
+    store.finish_run(
+        &run.run_id,
+        outcome.exit_code,
+        next_state.as_str(),
+        outcome.approval_pending,
+        outcome.approval_request_count,
+        outcome.approval_resolved_count,
+    )?;
+
+    if config.codex.transport == CodexTransport::AppServer && next_state == LaneState::WaitingReply
+    {
+        drain_followup_queue(
+            config,
+            store,
+            telegram,
+            codex,
+            active_turns,
+            &lane.lane_id,
+            chat_id,
+            thread_key,
+        )
+        .await?;
+    }
+
+    if outcome.approval_pending {
+        return Ok(ApprovalDecisionReply::new(
+            format!(
+                "Approval request `{request_id}` was answered. Sent the next approval request."
+            ),
+            "Input applied; sent the next approval request.".to_owned(),
+        ));
+    }
+
+    let reply = if let Some(summary) = unresolved_checks.as_ref() {
+        truncate(
+            &format_reply_with_failed_checks(&outcome.last_message, summary, auto_turns_completed),
+            config.policy.max_output_chars,
+        )
+    } else if outcome.last_message.trim().is_empty() {
+        "Could not read the response after sending input. Check local logs.".to_owned()
+    } else {
+        truncate(&outcome.last_message, config.policy.max_output_chars)
+    };
+    Ok(ApprovalDecisionReply::new(
+        reply,
+        "Input applied.".to_owned(),
+    ))
+}
+
+fn tool_user_input_has_secret_question(request: &crate::store::ApprovalRequestRecord) -> bool {
+    let Ok(raw_payload) = serde_json::from_str::<serde_json::Value>(&request.raw_payload_json)
+    else {
+        return false;
+    };
+    raw_payload
+        .get("questions")
+        .and_then(serde_json::Value::as_array)
+        .map(|questions| {
+            questions.iter().any(|question| {
+                question
+                    .get("isSecret")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+            })
+        })
         .unwrap_or(false)
 }
 
@@ -1960,6 +2344,7 @@ fn format_help_message() -> String {
         "/stop",
         "/approve <request_id>",
         "/deny <request_id>",
+        "/answer <request_id> <answer>",
         "/workspace",
         "/workspace <id>",
         "/remotty-sessions",
@@ -2671,6 +3056,7 @@ fn build_approval_notice(request: &crate::store::ApprovalRequestRecord) -> Appro
         &request.request_id,
         request.requested_at_ms,
         request.request_kind,
+        tool_user_input_is_answerable_from_telegram(request),
     )
 }
 
@@ -2679,11 +3065,20 @@ fn build_approval_notice_parts(
     request_id: &str,
     requested_at_ms: i64,
     request_kind: crate::store::ApprovalRequestKind,
+    tool_user_input_answerable: bool,
 ) -> ApprovalNotice {
     if request_kind == crate::store::ApprovalRequestKind::ToolUserInput {
+        if !tool_user_input_answerable {
+            return ApprovalNotice {
+                text: format!(
+                    "{summary_text}\n\nRequest ID: `{request_id}`\n\nThis request cannot be answered from Telegram. Use the local Codex screen."
+                ),
+                buttons: None,
+            };
+        }
         return ApprovalNotice {
             text: format!(
-                "{summary_text}\n\nRequest ID: `{request_id}`\n\nThis request type cannot be answered from Telegram yet. Additional local input is required."
+                "{summary_text}\n\nRequest ID: `{request_id}`\n\nReply with `/answer {request_id} <answer>`. For multiple fields, send each answer as `id=value` on a separate line. If the request asks for a secret, use the local Codex screen instead."
             ),
             buttons: None,
         };
@@ -2703,6 +3098,39 @@ fn build_approval_notice_parts(
             },
         ]),
     }
+}
+
+fn tool_user_input_is_answerable_from_telegram(
+    request: &crate::store::ApprovalRequestRecord,
+) -> bool {
+    if request.request_kind != crate::store::ApprovalRequestKind::ToolUserInput {
+        return true;
+    }
+    let Ok(raw_payload) = serde_json::from_str::<serde_json::Value>(&request.raw_payload_json)
+    else {
+        return false;
+    };
+    let Some(questions) = raw_payload
+        .get("questions")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return false;
+    };
+    if questions.is_empty() {
+        return false;
+    }
+    questions.iter().all(|question| {
+        let has_id = question
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+        let is_secret = question
+            .get("isSecret")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        has_id && !is_secret
+    })
 }
 
 fn resolve_workspace<'a>(
@@ -3503,6 +3931,7 @@ mod tests {
             "approval-11111111-1111-1111-1111-111111111111",
             1_776_644_085_000,
             crate::store::ApprovalRequestKind::CommandExecution,
+            true,
         );
 
         assert!(
@@ -3544,9 +3973,42 @@ mod tests {
             "req-2",
             1_776_644_085_000,
             crate::store::ApprovalRequestKind::ToolUserInput,
+            true,
         );
 
-        assert!(notice.text.contains("cannot be answered from Telegram yet"));
+        assert!(notice.text.contains("/answer req-2 <answer>"));
+        assert!(notice.text.contains("local Codex screen"));
+        assert!(notice.buttons.is_none());
+    }
+
+    #[test]
+    fn unanswerable_tool_user_input_notice_points_to_local_screen() {
+        let request = crate::store::ApprovalRequestRecord {
+            request_id: "req-local-only".to_owned(),
+            transport_request_id: "transport-req-local-only".to_owned(),
+            lane_id: "lane-1".to_owned(),
+            run_id: "run-1".to_owned(),
+            thread_id: "thread-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            item_id: "item-1".to_owned(),
+            transport: ApprovalRequestTransport::AppServer,
+            request_kind: ApprovalRequestKind::ToolUserInput,
+            summary_text: "追加の入力待ち: 質問数 1\n1. id なし: 追加入力".to_owned(),
+            raw_payload_json: serde_json::json!({
+                "questions": [{ "question": "Need input", "isSecret": false }]
+            })
+            .to_string(),
+            status: ApprovalRequestStatus::Pending,
+            requested_at_ms: 1_776_644_085_000,
+            resolved_at_ms: None,
+            resolved_by_sender_id: None,
+            telegram_message_id: None,
+        };
+
+        let notice = build_approval_notice(&request);
+
+        assert!(!notice.text.contains("/answer"));
+        assert!(notice.text.contains("local Codex screen"));
         assert!(notice.buttons.is_none());
     }
 
@@ -4600,6 +5062,160 @@ mod tests {
                 .contains("cannot be handled from Telegram yet")
         );
         assert!(telegram.edited_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn malformed_tool_user_input_answer_stays_pending() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let config = test_config();
+        let codex = CodexRunner::new(config.codex.clone());
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(23, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        store
+            .update_lane_state(
+                &lane.lane_id,
+                LaneState::NeedsLocalApproval,
+                Some("thread-1"),
+            )
+            .expect("lane should update");
+
+        store
+            .insert_approval_request(NewApprovalRequest {
+                request_id: "req-tool-input-format".to_owned(),
+                transport_request_id: "transport-req-tool-input-format".to_owned(),
+                lane_id: lane.lane_id.clone(),
+                run_id: "run-tool-input-format".to_owned(),
+                thread_id: "thread-tool-input-format".to_owned(),
+                turn_id: "turn-tool-input-format".to_owned(),
+                item_id: "item-tool-input-format".to_owned(),
+                transport: ApprovalRequestTransport::AppServer,
+                request_kind: ApprovalRequestKind::ToolUserInput,
+                summary_text: "summary for req-tool-input-format".to_owned(),
+                raw_payload_json: serde_json::json!({
+                    "questions": [
+                        { "id": "target", "question": "Target?", "isSecret": false },
+                        { "id": "mode", "question": "Mode?", "isSecret": false }
+                    ]
+                })
+                .to_string(),
+                status: ApprovalRequestStatus::Pending,
+            })
+            .expect("approval request should insert");
+
+        let reply = handle_tool_user_input_answer_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            &ActiveTurnRegistry::default(),
+            77,
+            23,
+            "dm",
+            Some(&lane),
+            "req-tool-input-format",
+            "target=docs",
+        )
+        .await
+        .expect("tool input answer should return a reply");
+
+        assert_eq!(reply.callback_text, "Answer format is invalid. Try again.");
+        assert!(reply.reply_text.contains("mode"));
+        let request = store
+            .find_approval_request("req-tool-input-format")
+            .expect("request query")
+            .expect("request should remain");
+        assert_eq!(request.status, ApprovalRequestStatus::Pending);
+        let lane = store
+            .find_lane(23, "dm")
+            .expect("lane query")
+            .expect("lane should remain");
+        assert_eq!(lane.state, LaneState::NeedsLocalApproval);
+        assert!(telegram.edited_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn tool_user_input_answer_without_app_server_invalidates_request() {
+        let dir = tempdir().expect("tempdir should be created");
+        let store = Store::open(dir.path().join("bridge.db")).expect("store should open");
+        let mut config = test_config();
+        config.codex.transport = CodexTransport::AppServer;
+        let codex = CodexRunner::new(config.codex.clone());
+        let telegram = MockTelegram::default();
+        let lane = store
+            .get_or_create_lane(24, "dm", "main", LaneMode::AwaitReply, 0)
+            .expect("lane should exist");
+        store
+            .update_lane_state(
+                &lane.lane_id,
+                LaneState::NeedsLocalApproval,
+                Some("thread-1"),
+            )
+            .expect("lane should update");
+
+        store
+            .insert_approval_request(NewApprovalRequest {
+                request_id: "req-stale-tool-input".to_owned(),
+                transport_request_id: "transport-req-stale-tool-input".to_owned(),
+                lane_id: lane.lane_id.clone(),
+                run_id: "run-stale-tool-input".to_owned(),
+                thread_id: "thread-stale-tool-input".to_owned(),
+                turn_id: "turn-stale-tool-input".to_owned(),
+                item_id: "item-stale-tool-input".to_owned(),
+                transport: ApprovalRequestTransport::AppServer,
+                request_kind: ApprovalRequestKind::ToolUserInput,
+                summary_text: "summary for req-stale-tool-input".to_owned(),
+                raw_payload_json: serde_json::json!({
+                    "questions": [
+                        { "id": "target", "question": "Target?", "isSecret": false }
+                    ]
+                })
+                .to_string(),
+                status: ApprovalRequestStatus::Pending,
+            })
+            .expect("approval request should insert");
+        store
+            .set_approval_request_message_id("req-stale-tool-input", 808)
+            .expect("message id should persist");
+
+        let reply = handle_tool_user_input_answer_message(
+            &config,
+            &store,
+            &telegram,
+            &codex,
+            &ActiveTurnRegistry::default(),
+            77,
+            24,
+            "dm",
+            Some(&lane),
+            "req-stale-tool-input",
+            "docs",
+        )
+        .await
+        .expect("tool input answer should return a stale-app-server reply");
+
+        assert_eq!(reply.callback_text, "App-server connection was restarted.");
+        assert!(
+            reply
+                .reply_text
+                .contains("app-server connection was restarted")
+        );
+        let request = store
+            .find_approval_request("req-stale-tool-input")
+            .expect("request query")
+            .expect("request should remain");
+        assert_eq!(request.status, ApprovalRequestStatus::Invalidated);
+        let lane = store
+            .find_lane(24, "dm")
+            .expect("lane query")
+            .expect("lane should remain");
+        assert_eq!(lane.state, LaneState::WaitingReply);
+        let edits = telegram.edited_messages();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].message_id, 808);
+        assert!(edits[0].text.contains("Send the original request again"));
     }
 
     #[tokio::test]

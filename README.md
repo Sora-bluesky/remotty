@@ -29,6 +29,25 @@ It is not an official remote-control surface for Codex.
 In the current public flow, it talks to local Codex through the local `codex`
 command and the `app_server` transport.
 
+## What It Is Not
+
+`remotty` is not a mobile Codex App or a Web IDE.
+Its strength is letting you answer the small moments that matter while away
+from your desk: notifications, approvals, short replies, and Codex input
+requests through Telegram.
+It is a lightweight contact point for the moments when Codex needs a human,
+not a full remote workspace.
+
+The positioning is:
+
+- [Codex Remote connections](https://developers.openai.com/codex/remote-connections):
+  an OpenAI feature that lets Codex work in projects on SSH-connected or cloud
+  environments.
+- A mobile web app: a full browser UI that a developer may build separately to
+  operate Codex remotely.
+- `remotty`: a lightweight Telegram contact point for Codex confirmations,
+  approvals, and input requests.
+
 ## What It Does
 
 - Connects a Telegram bot to Codex on your Windows PC.
@@ -107,9 +126,12 @@ Run these in Telegram:
 /stop
 /approve <request_id>
 /deny <request_id>
+/answer <request_id> <value>
 /workspace
 /workspace <id>
 ```
+
+For `/answer` details, see [Codex Input Requests](docs/telegram-quickstart.md#codex-input-requests).
 
 ## Security
 
@@ -117,6 +139,9 @@ Run these in Telegram:
 - Use a dedicated Telegram bot for `remotty`.
 - Do not paste bot tokens into chat, issues, or pull requests.
 - Do not paste bot tokens or `api.telegram.org/bot...` URLs into issues.
+- `remotty` rejects Codex input requests marked as secret. Treat Telegram
+  messages as chat history: do not send passwords, API keys, recovery codes, or
+  other secrets with `/answer`.
 - Keep project files separate from `%APPDATA%\remotty` runtime state.
 
 ## Related Docs
