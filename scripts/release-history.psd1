@@ -371,5 +371,16 @@
                 "Included recent dependency patch updates from Dependabot."
             )
         }
+        @{
+            Version = "0.2.15"
+            Commit = "7962ad6f0378716fbb06aeaece0d7d57fbac2c65"
+            Title = "Telegram input prompt answers"
+            Notes = @(
+                "Updated GitHub Actions workflows to the Node 24 runtime."
+                "Relayed Codex input prompts to Telegram with answer choices when available."
+                "Allowed Telegram replies to answer pending Codex input prompts on the active turn."
+                "Updated README and Telegram quickstart docs to describe prompt answers from Telegram."
+            )
+        }
     )
 }
