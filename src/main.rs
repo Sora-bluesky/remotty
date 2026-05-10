@@ -13,13 +13,23 @@ use remotty::engine;
 use remotty::live_smoke::{self, SmokeScenario};
 use remotty::service;
 use remotty::telegram_cli;
-use remotty::windows_secret::{delete_secret, store_secret};
+use remotty::windows_secret::{delete_secret, load_secret, store_secret};
 use tracing_subscriber::EnvFilter;
+
+enum BridgeLaunchMode {
+    Config,
+    Console,
+    Service,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     match parse_args(std::env::args().skip(1))? {
-        CliCommand::Run { config_path } => run_bridge(config_path, false).await,
+        CliCommand::Run { config_path } => run_bridge(config_path, BridgeLaunchMode::Config).await,
+        CliCommand::RemoteControl {
+            config_path,
+            workspace_path,
+        } => run_remote_control(config_path, workspace_path).await,
         CliCommand::Config(ConfigCommand::WorkspaceUpsert {
             config_path,
             workspace_path,
@@ -47,7 +57,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         CliCommand::Service(ServiceCommand::Run { config_path }) => {
-            run_bridge(config_path, true).await
+            run_bridge(config_path, BridgeLaunchMode::Service).await
         }
         CliCommand::Service(ServiceCommand::Install { config_path }) => {
             let config_path = service::install_service(config_path)?;
@@ -134,6 +144,49 @@ async fn main() -> Result<()> {
     }
 }
 
+async fn run_remote_control(config_path: PathBuf, workspace_path: PathBuf) -> Result<()> {
+    let result = config_workspace::upsert_workspace(&config_path, workspace_path)?;
+    println!("{}", format_remote_control_setup_message(&result));
+
+    let config = Config::load(&config_path)?;
+    if !telegram_token_is_configured(&config) {
+        println!(
+            "Telegram bot token is needed once. Paste it below; remotty stores it in Windows protected storage."
+        );
+        println!("{}", telegram_cli::configure(config_path.clone()).await?);
+    }
+
+    run_bridge(config_path, BridgeLaunchMode::Console).await
+}
+
+fn format_remote_control_setup_message(result: &config_workspace::WorkspaceUpsertResult) -> String {
+    [
+        "Remote Control".to_owned(),
+        format!(
+            "Project `{}` is registered for Telegram remote control.",
+            result.workspace_id
+        ),
+        format!("Config: {}", result.config_path.display()),
+        format!(
+            "Workspace: {}",
+            config_workspace::render_workspace_path(&result.workspace_path)
+        ),
+        "Send a Telegram message to the bot. First-time users get a pairing code automatically."
+            .to_owned(),
+    ]
+    .join("\n")
+}
+
+fn telegram_token_is_configured(config: &Config) -> bool {
+    load_secret(&config.telegram.token_secret_ref)
+        .map(|token| !token.trim().is_empty())
+        .unwrap_or_else(|_| {
+            std::env::var("TELEGRAM_BOT_TOKEN")
+                .map(|token| !token.trim().is_empty())
+                .unwrap_or(false)
+        })
+}
+
 fn ensure_dirs(config: &Config) -> Result<()> {
     fs::create_dir_all(&config.storage.state_dir)?;
     fs::create_dir_all(&config.storage.temp_dir)?;
@@ -149,18 +202,18 @@ fn init_tracing() {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
-async fn run_bridge(config_path: PathBuf, force_service_mode: bool) -> Result<()> {
+async fn run_bridge(config_path: PathBuf, launch_mode: BridgeLaunchMode) -> Result<()> {
     let config = Config::load(&config_path)?;
     config_workspace::ensure_default_workspace_is_ready(&config)?;
     ensure_dirs(&config)?;
     init_tracing();
 
-    if force_service_mode {
-        service::run_service_mode(config)
-    } else {
-        match config.service.run_mode {
+    match launch_mode {
+        BridgeLaunchMode::Console => engine::run_console(config).await,
+        BridgeLaunchMode::Service => service::run_service_mode(config),
+        BridgeLaunchMode::Config => match config.service.run_mode {
             RunMode::Console => engine::run_console(config).await,
             RunMode::Service => service::run_service_mode(config),
-        }
+        },
     }
 }

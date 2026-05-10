@@ -57,12 +57,12 @@ pub fn ensure_default_workspace_is_ready(config: &crate::config::Config) -> Resu
     let workspace = config.default_workspace();
     if is_placeholder_path(&workspace.path) {
         bail!(
-            "workspace is not configured. Open or enter the target project and use the `remotty-use-this-project` skill or `remotty config workspace upsert`."
+            "workspace is not configured. Open or enter the target project and run `remotty remote-control`."
         );
     }
     if !workspace.path.is_dir() {
         bail!(
-            "workspace path does not exist: {}. Open or enter the target project and use the `remotty-use-this-project` skill or `remotty config workspace upsert`.",
+            "workspace path does not exist: {}. Open or enter the target project and run `remotty remote-control`.",
             workspace.path.display()
         );
     }

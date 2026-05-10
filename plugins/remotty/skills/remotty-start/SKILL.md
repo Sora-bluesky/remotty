@@ -5,10 +5,10 @@ description: Start the remotty bridge for Telegram. Use when the user asks to st
 
 # remotty start
 
-Start the bridge using the user config.
+Start Remote Control from the current project.
 The supported Telegram flow is for Codex CLI.
 
-1. Resolve the config path:
+1. Resolve the config path for checks and troubleshooting:
 
 ```powershell
 $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
@@ -20,22 +20,23 @@ $configPath = Join-Path $env:APPDATA "remotty\bridge.toml"
 remotty service start
 ```
 
-3. Otherwise start an interactive window:
+3. Otherwise start an interactive window in the project directory:
 
 ```powershell
 Start-Process pwsh -ArgumentList @(
   "-NoProfile",
   "-NoExit",
   "-Command",
-  "remotty --config `"$env:APPDATA\remotty\bridge.toml`"; Read-Host 'Press Enter to close'"
+  "remotty remote-control; Read-Host 'Press Enter to close'"
 )
 ```
 
-4. Confirm that the bridge window shows:
+4. Confirm that the Remote Control window shows:
 
 ```text
+Remote Control active
 Listening for Telegram channel messages from: remotty:telegram
 ```
 
-5. Tell the user to keep the bridge window open while using Telegram.
+5. Tell the user to keep the Remote Control window open while using Telegram.
 6. If a polling conflict appears, explain that another bridge is reading the same bot.

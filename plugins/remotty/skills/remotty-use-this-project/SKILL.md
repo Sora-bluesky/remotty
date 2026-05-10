@@ -7,6 +7,7 @@ description: Register the current Codex workspace as a remotty workspace. Use wh
 
 Register the current workspace without writing to the repository.
 The supported Telegram flow is for Codex CLI.
+For normal first-time setup, prefer `remotty remote-control`; this skill is for explicit registration only.
 
 1. Resolve the config path:
 
