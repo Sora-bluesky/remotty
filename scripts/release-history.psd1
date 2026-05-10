@@ -360,5 +360,16 @@
                 "Removed the duplicate manual Codex thread selection step from the public Telegram quickstart."
             )
         }
+        @{
+            Version = "0.2.14"
+            Commit = "388eca06a7d9e8ed67a29c5a30a341397eec27d7"
+            Title = "Telegram bridge documentation and dependency refresh"
+            Notes = @(
+                "Rewrote the README and quickstart in plainer language so non-developers can follow the Telegram bridge setup."
+                "Clarified that remotty helps with short Telegram follow-ups and does not replace the main place people use Codex."
+                "Updated the public hero image to match the Telegram bridge wording."
+                "Included recent dependency patch updates from Dependabot."
+            )
+        }
     )
 }
