@@ -362,7 +362,7 @@
         }
         @{
             Version = "0.2.14"
-            Commit = "ed17a4566c67621ea057eea3310860bdfcb7b7e9"
+            Commit = "388eca06a7d9e8ed67a29c5a30a341397eec27d7"
             Title = "Telegram bridge documentation and dependency refresh"
             Notes = @(
                 "Rewrote the README and quickstart in plainer language so non-developers can follow the Telegram bridge setup."
