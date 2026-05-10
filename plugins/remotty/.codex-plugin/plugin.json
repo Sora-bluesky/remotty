@@ -1,6 +1,6 @@
 {
   "name": "remotty",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Setup and operations for the remotty Windows bridge for Codex and Telegram.",
   "author": {
     "name": "Sora-bluesky",

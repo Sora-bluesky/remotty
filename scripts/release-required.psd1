@@ -18,5 +18,6 @@
         # 0.2.12 was not published; the next public patch release was 0.2.13.
         "0.2.13"
         "0.2.14"
+        "0.2.15"
     )
 }
