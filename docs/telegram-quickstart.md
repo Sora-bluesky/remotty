@@ -18,8 +18,8 @@ Use the Codex App or Codex CLI for rich task control and detailed diff review.
 ## How It Works
 
 1. You start Codex CLI in one PowerShell window for the project you want to work on.
-2. You run `remotty remote-control` in a separate PowerShell window for the same project.
-3. On first run, `remotty` creates `%APPDATA%\remotty\bridge.toml`, registers the current project, and asks for your Telegram bot token.
+2. You run `remotty remote-control` in a separate PowerShell window for the same project and Windows user.
+3. If `%APPDATA%\remotty\bridge.toml` is missing, `remotty` creates it. It registers the current project on every run, and asks for your Telegram bot token only when none is already stored.
 4. `remotty` prints a remote-control startup message.
 5. You send a message to your Telegram bot.
 6. First-time senders get a pairing code. After pairing, messages go to the Codex CLI session for this project.
@@ -54,6 +54,7 @@ Keep Remote Control PowerShell open while you use Telegram.
 - Node.js and `npm`
 - Telegram
 - A dedicated Telegram bot from `@BotFather`
+- The same Windows user for storing the bot token and running `remotty`
 
 ## 1. Install `remotty`
 
@@ -102,12 +103,12 @@ Run this in Remote Control PowerShell, not inside the Codex CLI prompt. If Codex
 `no matches`, press `Esc` to clear that input, switch to Remote Control PowerShell,
 and run the command there.
 
-On first run, paste the Telegram bot token when prompted.
+If no Telegram bot token is stored yet, paste it when prompted.
 The command stores it in Windows protected storage and does not print it back.
 The encrypted file is under `%LOCALAPPDATA%\remotty\secrets`.
 The default file name is `remotty-telegram-bot.bin`.
 
-Startup uses `%APPDATA%\remotty\bridge.toml`.
+Startup uses `%APPDATA%\remotty\bridge.toml` by default.
 The command creates that file if needed and registers the current project.
 It does not create files in the project root.
 If you want to verify that, run `git status`.
@@ -204,7 +205,7 @@ If Codex asks for secret input, use the local Codex screen.
 > Q. Can I use an explicit config or workspace path?
 >
 > A. Yes. Use `remotty remote-control --config <bridge.toml> --path <dir>`.
-> The older `remotty config workspace upsert` command remains available for advanced scripts.
+> The lower-level `remotty config workspace upsert` command remains available for advanced scripts.
 
 > Q. The bot does not reply.
 >
@@ -223,6 +224,7 @@ If Codex asks for secret input, use the local Codex screen.
 >
 > A. It is stored in Windows protected storage under `%LOCALAPPDATA%\remotty\secrets`.
 > It is not stored in your project repository, GitHub, or Telegram chat.
+> The Windows user who runs `remotty` must be the same user who stored the token.
 
 > Q. Should I paste the token into Codex CLI?
 >
