@@ -17,6 +17,7 @@ transport = "app_server"
 
 With this setting, Telegram continues the Codex CLI session through the
 `remotty remote-control` process you start for that project.
+Run `remotty` as the same Windows user that stored the Telegram bot token.
 
 ## If Your Config Uses `exec`
 

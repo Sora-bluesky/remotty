@@ -25,7 +25,7 @@ You send a message to your Telegram bot.
 
 `remotty` does not expose a public webhook server. It also does not type into
 the open Codex App window.
-It is not an official remote-control surface for Codex.
+It is not an official remote-control surface for the Codex App.
 In the current public flow, it talks to local Codex through the local `codex`
 command and the `app_server` transport.
 
@@ -77,8 +77,8 @@ Rust is only needed when you build from source.
 
 Use the [Telegram Quickstart](docs/telegram-quickstart.md).
 
-It walks through installation, bot setup, `remotty remote-control`, pairing,
-and a first Telegram test message.
+It walks through installation, bot setup, starting `remotty remote-control`,
+pairing, and a first Telegram test message.
 
 Want to try the local loop before making a Telegram bot?
 Use the [Fakechat Demo](docs/fakechat-demo.md).
@@ -99,8 +99,10 @@ project you want to use.
 
 The shortest path is to start Codex CLI for a project, then run
 `remotty remote-control` for the same project in another PowerShell window.
-On first run, `remotty` creates `%APPDATA%\remotty\bridge.toml`, registers the
-current project, and asks for your Telegram bot token.
+By default, if `%APPDATA%\remotty\bridge.toml` is missing, `remotty` creates it.
+It registers the current project on every run, and asks for your Telegram bot
+token only when none is already stored.
+Advanced users can pass an explicit config path in the quickstart commands.
 
 | Window | Keep it open? | Use it for |
 | --- | --- | --- |
@@ -120,7 +122,7 @@ If you also use Codex App, the bundled plugin can help with setup tasks.
 The plugin is optional. The supported Telegram flow is the Codex CLI flow above:
 Codex CLI plus the `remotty` PowerShell commands.
 
-Run these in Telegram:
+Common Telegram commands are:
 
 ```text
 /help
@@ -133,14 +135,18 @@ Run these in Telegram:
 /workspace <id>
 ```
 
+Send `/help` to the bot for the full command list, including session and mode
+controls.
+
 For `/answer` details, see [Codex Input Requests](docs/telegram-quickstart.md#codex-input-requests).
 
 ## Security
 
-- Store bot tokens with `remotty telegram configure` so they stay in Windows protected storage.
+- Store bot tokens with `remotty remote-control` or `remotty telegram configure` so they stay in Windows protected storage.
 - Use a dedicated Telegram bot for `remotty`.
 - Do not paste bot tokens into chat, issues, or pull requests.
 - Do not paste bot tokens or `api.telegram.org/bot...` URLs into issues.
+- Use the same Windows user to store the token and run `remotty`.
 - `remotty` rejects Codex input requests marked as secret. Treat Telegram
   messages as chat history: do not send passwords, API keys, recovery codes, or
   other secrets with `/answer`.

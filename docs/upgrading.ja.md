@@ -17,6 +17,7 @@ transport = "app_server"
 
 これで、そのプロジェクトで起動した `remotty remote-control` のプロセスを通じて、
 Telegram から `Codex CLI` セッションを続けられます。
+`remotty` は、Telegram bot token を保存した Windows ユーザーで起動してください。
 
 ## 設定が `exec` の場合
 
